@@ -1,0 +1,10 @@
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Results
+results/*
+
+# Others
+.idea/
+.pyc
+__pycache__/
