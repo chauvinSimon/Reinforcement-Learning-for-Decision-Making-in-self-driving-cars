@@ -61,7 +61,7 @@ plt.rcParams['figure.figsize'] = [20, 10]
 
 
 class RL(object):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, e_greedy=0.9, load_q_table=False):
+    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
         """
 
         :param actions: list of possible actions (str)
@@ -80,7 +80,7 @@ class RL(object):
 
         self.lr = learning_rate
         self.gamma = reward_decay
-        self.epsilon = e_greedy
+        # self.epsilon = e_greedy
 
         if load_q_table:
             try:
@@ -99,12 +99,13 @@ class RL(object):
         self.action_to_color = dict(zip(self.actions_list, colours_list))
         self.size_of_largest_element = 800
 
-    def choose_action(self, observation, masked_actions_list):
+    def choose_action(self, observation, masked_actions_list, greedy_epsilon):
         """
         chose an action based on the policy of the q-table
         with an e_greedy approach
         :param observation: current state
         :param masked_actions_list: forbidden actions
+        :param greedy_epsilon: probability of random choice for epsilon-greedy action selection
         :return:
         """
         # print("state before choosing an action: %s " % observation)
@@ -115,8 +116,8 @@ class RL(object):
         if not possible_actions:
             print("!!!!! No possible_action !!!!!")
 
-        # action selection with e_greedy approach
-        if np.random.uniform() < self.epsilon:
+        # Epsilon-greedy action selection
+        if np.random.uniform() > greedy_epsilon:
             # choose best action
 
             # read the row corresponding to the state and restrict to action columns
@@ -198,7 +199,7 @@ class RL(object):
         except Exception as e:
             print(e)
 
-    def save_q_table(self, dir):
+    def save_q_table(self, save_directory):
         """
         at the end, save the q-table
         several extensions are possible:
@@ -212,11 +213,11 @@ class RL(object):
             # print("Saved as " + filename + ".csv")
 
             # to pickle
-            self.q_table.to_pickle(dir + filename + ".pkl")
+            self.q_table.to_pickle(save_directory + filename + ".pkl")
             print("Saved as " + filename + ".pkl")
 
             # to h5
-            store = pd.HDFStore(dir + filename + '.h5')
+            store = pd.HDFStore(save_directory + filename + '.h5')
             store['q_table'] = self.q_table
             store.close()
             print("Saved as " + filename + ".h5")
@@ -346,8 +347,8 @@ class RL(object):
 # on-policy: Unlike Q learning which is a offline updating method, Sarsa is updating while in the current trajectory
 # SARSA can only learn from myself (from the experience and transition I met in the past)
 class SarsaTable(RL):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, e_greedy=0.9, load_q_table=False):
-        super(SarsaTable, self).__init__(actions, state, learning_rate, reward_decay, e_greedy, load_q_table)
+    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
+        super(SarsaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
 
     def learn(self, s, a, r, s_, a_, termination_flag):
         """
@@ -392,8 +393,8 @@ class SarsaTable(RL):
 
 # off-policy
 class QLearningTable(RL):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, e_greedy=0.9, load_q_table=False):
-        super(QLearningTable, self).__init__(actions, state, learning_rate, reward_decay, e_greedy, load_q_table)
+    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
+        super(QLearningTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
 
     def learn(self, s, a, r, s_, termination_flag):
         """
@@ -447,9 +448,9 @@ class QLearningTable(RL):
 # - in between (Lambda in [0,1])
 # Idea is to update and give reward to all the steps that contribute to the end return
 class SarsaLambdaTable(RL):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, e_greedy=0.9, load_q_table=False,
+    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False,
                  trace_decay=0.9):
-        super(SarsaLambdaTable, self).__init__(actions, state, learning_rate, reward_decay, e_greedy, load_q_table)
+        super(SarsaLambdaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
 
         # !!!!!!!!!
         # backward view, eligibility trace.
@@ -550,10 +551,9 @@ class QLearningApproximation(RL):
      - linear regression with SGD
       - MLP
     """
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, e_greedy=0.9, load_q_table=False,
+    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False,
                  regressor="linearSGD"):
-        super(QLearningApproximation, self).__init__(actions, state, learning_rate, reward_decay, e_greedy,
-                                                     load_q_table)
+        super(QLearningApproximation, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
 
         # hand-crafted: list all possible (pos, vel) pairs
         self.sample_states = [[position, velocity] for position in range(20) for velocity in range(6)]
@@ -744,12 +744,13 @@ class QLearningApproximation(RL):
         id_a = self.actions_list.index(a)
         self.update(s, id_a, q_target_approximation)
 
-    def choose_action(self, observation, masked_actions_list):
+    def choose_action(self, observation, masked_actions_list, greedy_epsilon):
         """
         chose an action based on the policy of the q-table
         with an e_greedy approach
         :param observation: current state
         :param masked_actions_list: forbidden actions
+        :param greedy_epsilon: probability of random choice for epsilon-greedy action selection
         :return:
         """
         # print("state before choosing an action: %s " % observation)
@@ -759,8 +760,8 @@ class QLearningApproximation(RL):
         if not possible_actions:
             print("!!!!! No possible_action !!!!!")
 
-        # action selection with e_greedy approach
-        if np.random.uniform() < self.epsilon:
+        # Epsilon-greedy action selection
+        if np.random.uniform() > greedy_epsilon:
             # choose best action
 
             actions_value = self.predict(observation)

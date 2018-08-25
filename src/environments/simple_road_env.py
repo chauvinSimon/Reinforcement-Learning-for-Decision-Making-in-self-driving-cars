@@ -106,12 +106,13 @@ def process_state(input_state):
     :param input_state:
     :return: representation of the state understood by the RL agent
     """
-    position = input_state[0]
+    ego_position = input_state[0]
     velocity = input_state[1]
+    obstacle_position = input_state[2]
 
     # one-hot encoding of the state
     repr_size = 20
-    encoded_position = one_hot_encoding(position)
+    encoded_position = one_hot_encoding(ego_position)
     encoded_velocity = one_hot_encoding(velocity)
 
     one_hot_state = np.row_stack((encoded_position, encoded_velocity))
@@ -125,7 +126,8 @@ def process_state(input_state):
     # print("one_hot_state has shape =")
     # print(np.shape(one_hot_state))  # Here one_hot_state is (84, 84)
 
-    return [position, velocity]
+    # ToDo: increase state for the brain
+    return [ego_position, velocity]  #, obstacle_position]
 
     # make one_hot_state have mean 0 and a variance of 1
     # print(one_hot_state)
@@ -203,6 +205,7 @@ class Road(tk.Tk, object):  # if tk is supported
         self.initial_state = initial_state
         self.state_position = self.initial_state[0]
         self.state_velocity = self.initial_state[1]
+        self.state_obstacle_position = self.initial_state[2]
         self.previous_state_position = self.state_position
         self.previous_state_velocity = self.state_velocity
         self.previous_action = None
@@ -211,8 +214,8 @@ class Road(tk.Tk, object):  # if tk is supported
         # self.initial_position = [self.initial_state[0], Y_COORD]
         self.goal_coord = [MAZE_W - 1, 1]
         self.goal_velocity = goal_velocity
-        random_position_obstacle = self.sample_position_obstacle()
-        self.obstacle1_coord = [random_position_obstacle, 2]
+        # random_position_obstacle = self.sample_position_obstacle()
+        self.obstacle1_coord = [self.state_obstacle_position, 2]
         self.obstacle2_coord = [1, 3]
         self.initial_position = [self.initial_state[0], Y_COORD]
         # self.goal_coord = np.array([MAZE_W - 1, 1])
@@ -258,7 +261,6 @@ class Road(tk.Tk, object):  # if tk is supported
         :return:
         """
         print(self.rewards_dict)
-        print(self.initial_state)
         print(self.initial_state)
 
     def _build_road(self):
@@ -338,6 +340,8 @@ class Road(tk.Tk, object):  # if tk is supported
 
         self.state_position = self.initial_state[0]
         self.state_velocity = self.initial_state[1]
+        self.state_obstacle_position = random_position_obstacle
+        self.initial_state[2] = random_position_obstacle
         self.previous_state_position = self.initial_state[0]
         self.previous_state_velocity = self.initial_state[1]
 
@@ -421,7 +425,7 @@ class Road(tk.Tk, object):  # if tk is supported
         else:
             masked_actions_list = self.masking_function()
 
-        state_to_return = process_state([self.state_position, self.state_velocity])
+        state_to_return = process_state([self.state_position, self.state_velocity, self.state_obstacle_position])
         return state_to_return, reward, termination_flag, masked_actions_list
 
     def reward_function(self, action):
@@ -567,7 +571,7 @@ if __name__ == '__main__':
     nb_episodes = 5
     actions_list = ["no_change", "speed_up", "speed_up_up", "slow_down", "slow_down_down"]
     state_features_list = ["position", "velocity"]
-    the_initial_state = [0, 3]
+    the_initial_state = [0, 3, 12]
     env = Road(flag_tkinter, actions_list, state_features_list, the_initial_state)
     # Wait 100 ms and run several episodes
     if flag_tkinter:

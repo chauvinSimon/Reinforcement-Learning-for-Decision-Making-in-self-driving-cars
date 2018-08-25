@@ -71,7 +71,7 @@ class DeepQNetwork:
             state,
             learning_rate=0.01,
             reward_decay=0.9,
-            e_greedy=0.9,
+            # e_greedy=0.9,
             replace_target_iter=300,
             memory_size=50,
             batch_size=32,
@@ -88,12 +88,12 @@ class DeepQNetwork:
         self.n_features = len(state)
         self.lr = learning_rate
         self.gamma = reward_decay
-        self.epsilon_max = e_greedy
+        # self.epsilon_max = e_greedy
         self.replace_target_iter = replace_target_iter
         self.memory_size = memory_size
         self.batch_size = batch_size
         self.epsilon_increment = e_greedy_increment
-        self.epsilon = 0 if e_greedy_increment is not None else self.epsilon_max
+        # self.epsilon = 0 if e_greedy_increment is not None else self.epsilon_max
 
         # total learning step
         self.learning_counter = 0
@@ -306,11 +306,12 @@ class DeepQNetwork:
         self.memory[index, :] = transition
         self.memory_counter += 1
 
-    def choose_action(self, observation, masked_actions_list):
+    def choose_action(self, observation, masked_actions_list, greedy_epsilon):
         """
 
         :param observation:
         :param masked_actions_list:
+        :param greedy_epsilon: [float] probability of random choice for epsilon-greedy action selection
         :return:
         """
         possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
@@ -325,7 +326,7 @@ class DeepQNetwork:
         observation = np.asarray(observation)  # convert to numpy
         observation = observation[np.newaxis, :]  # [0, 3] becomes [[0, 3]]
 
-        if np.random.uniform() < self.epsilon:
+        if np.random.uniform() > greedy_epsilon:
             # forward feed the observation and get q value for every actions
             # Runs operations and evaluates tensors in fetches
             actions_value = self.sess.run(
@@ -490,10 +491,10 @@ class DeepQNetwork:
         # print(self.cost_his)
 
         # increasing epsilon
-        if self.epsilon < self.epsilon_max:
-            self.epsilon = self.epsilon + self.epsilon_increment
-        else:
-            self.epsilon = self.epsilon_max
+        # if self.epsilon < self.epsilon_max:
+        #     self.epsilon = self.epsilon + self.epsilon_increment
+        # else:
+        #     self.epsilon = self.epsilon_max
 
         self.learning_counter += 1
         # print("learn counter = %s" % self.learning_counter)
