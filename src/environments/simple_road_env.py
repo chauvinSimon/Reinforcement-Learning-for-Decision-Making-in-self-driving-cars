@@ -554,7 +554,7 @@ def demo(actions, nb_episodes_demo):
         _, masked_actions_list = env.reset()
         print("New Episode")
         while True:
-            sleep_time = 0.0005
+            sleep_time = 0.5
             if env.using_tkinter:
                 env.render(sleep_time)
 

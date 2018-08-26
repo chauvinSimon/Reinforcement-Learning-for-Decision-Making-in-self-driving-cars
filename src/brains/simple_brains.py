@@ -24,7 +24,7 @@ Also, Q-Learning is not guaranteed to converge when combined with linear approxi
 
 All are model-free
 - Ask yourself this question:
-- After learning, can the agent make predictions about what the next state and reward will be before it takes each action?
+- After learning, can the agent make predictions about next state and reward before it takes each action?
     -- If it can, then it’s a model-based RL algorithm.
     -- If it cannot, it’s a model-free algorithm.
 
@@ -395,11 +395,66 @@ class SarsaTable(Agent):
             # using the actual action a_ to evaluate Q(s_, a_) - SARSA is therefore said "on-policy"
             q_target = r + self.gamma * self.q_table.loc[id_row_next_state, a_]
 
-        # update q-value following Q-learning - Delta is the TD-error
+        # update q-value - Delta is the TD-error
         self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
 
 
-# off-policy
+# to compute the q_predict, make the average of q-values based on probabilities of each action
+class ExpectedSarsa(Agent):
+    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
+        super(ExpectedSarsa, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
+
+    def learn(self, s, a, r, s_, termination_flag, greedy_epsilon):
+        """
+        update the q-table based on the observed experience S.A.R.S.A
+        :param s: previous state (list of int)
+        :param a: action (str)
+        :param r: reward (int)
+        :param s_: new state (list of int)
+        :param termination_flag: (boolean)
+        :param greedy_epsilon: [float]
+        :return: -
+        """
+        self.check_state_exist(s_)
+
+        # get id of the row of the previous state
+        id_row_previous_state = self.get_id_row_state(s)
+
+        # get id of the row of the next state
+        id_row_next_state = self.get_id_row_state(s_)
+
+        # get q-value of the pair (previous_state, action)
+        q_predict = self.q_table.loc[id_row_previous_state, a]
+
+        # Check if new state is terminal
+        if termination_flag:
+            # next state is terminal
+            # goal state has no value
+            q_target = r
+        else:
+            # next state is not terminal
+            row = self.q_table.loc[id_row_next_state]
+            # print("row = \n{}".format(row))
+            filtered_row = row.filter(self.actions_list)
+            # print("filtered_row = \n{}".format(filtered_row))
+            # print("max_filtered_row = \n{}".format(max(filtered_row)))
+            q_expected = 0
+            for a in self.actions_list:
+                # print("res = \n{}".format(res))
+                # print("state_action = \n{}".format(state_action))
+                value_a = filtered_row[a]
+                # print("q = {} for a = {}".format(value_a, a))
+                q_expected += filtered_row[a] * greedy_epsilon * 1 / len(self.actions_list)
+
+            q_expected += (1 - greedy_epsilon) * max(filtered_row)
+            # print("q_expected = {} for epsilon = {}".format(q_expected, greedy_epsilon))
+            q_target = r + self.gamma * q_expected
+
+        # update q-value - Delta is the TD-error
+        self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
+
+
+# off-policy. Q-learning = sarsa_max
 class QLearningTable(Agent):
     def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
         super(QLearningTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
