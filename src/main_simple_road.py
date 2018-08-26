@@ -85,7 +85,7 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
 
     # initialize updated variable
     episode_id = 0
-    current_action = ""
+    current_action = None
     next_observation = None
 
     # measure the running time
@@ -102,18 +102,17 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
         rewards = []
         actions = []
         changes_in_state = 0
+        next_action = None
 
         # reset the environment for a new episode
         current_observation, masked_actions_list = env.reset()  # initial observation = initial state
 
-        # for sarsa - agent selects action based on observation
-        # if method == "sarsa":
-        #     current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
-        #
-        # if method == "sarsa_lambda":
-        #     # for sarsa_lambda - initial all zero eligibility trace
-        #     agent.reset_eligibility_trace()
-        #     current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
+        # for sarsa - agent selects next action based on observation
+        if (method == "sarsa") or (method == "sarsa_lambda"):
+            current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
+            if method == "sarsa_lambda":
+                # for sarsa_lambda - initial all zero eligibility trace
+                agent.reset_eligibility_trace()
 
         # run episodes
         for step_id in range(max_nb_steps):
@@ -123,32 +122,41 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
             if using_tkinter:
                 env.render(sleep_time)
 
-            current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
-
-            # agent take action and get next observation (~state) and reward.
-            # Also the masked actions for the next step
-            next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
-
-            trajectory.append(current_observation)
-            trajectory.append(current_action)
-
             if (method == "sarsa") or (method == "sarsa_lambda"):
-                # Online-Policy: Choose an action At+1 following the same e-greedy policy based on current Q
-                next_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
-                # agent learn from this transition
-                agent.learn(current_observation, current_action, reward, next_observation, next_action,
-                            termination_flag)
+                next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
+                return_of_episode += reward
+                if not termination_flag:  # if done
+                    # Online-Policy: Choose an action At+1 following the same e-greedy policy based on current Q
+                    next_action = agent.choose_action(next_observation, masked_actions_list=[],
+                                                      greedy_epsilon=greedy_epsilon)
 
-            elif method == "expected_sarsa":
-                agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
-                            greedy_epsilon)
-                # ToDo: next_q = np.dot(Q[next_state], get_probs(next_state)) if next_state in self.Q else 0
+                    # agent learn from this transition
+                    agent.learn(current_observation, current_action, reward, next_observation, next_action,
+                                termination_flag)
+                    current_observation = next_observation
+                    current_action = next_action
+
+                if termination_flag:  # if done
+                    agent.learn(current_observation, current_action, reward, next_observation, next_action,
+                                termination_flag)
+                    # ToDo: check it ignore next_observation and next_action
+                    step_counter = step_id
+                    steps_counter_list.append(step_id)
+                    returns_list.append(return_of_episode)
+                    break
 
             else:
-                # Offline-Policy: Q-learning (classic and with approximation) or DQN
+                current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
+                next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
+                return_of_episode += reward
+
                 if method == "q":
                     # agent learn from this transition
                     agent.learn(current_observation, current_action, reward, next_observation, termination_flag)
+
+                elif method == "expected_sarsa":
+                    agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
+                                greedy_epsilon)
 
                 elif method == "q_approximation":
                     # Update the function approximator using our target
@@ -164,9 +172,16 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
                         # print('learning')
                         # pick up some transitions from the memory and learn from these samples
                         agent.learn()
+                current_observation = next_observation
+                if termination_flag:  # if done
+                    step_counter = step_id
+                    steps_counter_list.append(step_id)
+                    returns_list.append(return_of_episode)
+                    break
 
-            # update state
-            current_observation = next_observation
+            # log
+            trajectory.append(current_observation)
+            trajectory.append(current_action)
 
             # monitor actions, states and rewards are not constant
             rewards.append(reward)
@@ -174,22 +189,12 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
             if not (next_observation[0] == current_observation[0] and next_observation[1] == current_observation[1]):
                 changes_in_state = changes_in_state + 1
 
-            return_of_episode += reward
-
-            # break while-loop when end of this episode
-            if termination_flag:  # if done
-                step_counter = step_id
-                steps_counter_list.append(step_id)
-                # return_list.append(return_of_episode)
-                break
-
+        # At this point, the episode is terminated
         # decay epsilon
         greedy_epsilon = max(eps_end, eps_decay * greedy_epsilon)
 
-        # final state
-        trajectory.append(next_observation)
-
         # log
+        trajectory.append(next_observation)  # final state
         returns_window.append(return_of_episode)  # save most recent score
         if episode_id % 100 == 0:
             time_intermediate = time.time()
@@ -201,7 +206,6 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
                 episode_id+1, max_nb_episodes, greedy_epsilon, step_counter, return_of_episode, max_return,
                 sorted(returns_list, reverse=True)[:10]))
 
-        returns_list.append(return_of_episode)
         if return_of_episode == max_return:
             if trajectory not in best_trajectories_list:
                 best_trajectories_list.append(trajectory)
@@ -218,8 +222,10 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
             break
 
     # ToDo: save weights
-    # Done subsequently in agent.save_q_table(folder)?
-    # --
+    # where to save the weights
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    folder = os.path.join(parent_dir, "results/simple_road/")
+    agent.save_q_table(folder)
 
     print('End of training')
     print('Best return : %s --- with %s different trajectory(ies)' % (max_return, len(best_trajectories_list)))
@@ -262,7 +268,8 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
     plt.savefig(folder + "return.png")
     plt.show()
 
-    plt.hist(returns_to_plot, normed=True, bins=range(min(returns_to_plot), max(returns_to_plot) + 1, 1))
+    # bins = range(min(returns_to_plot), max(returns_to_plot) + 1, 1)
+    plt.hist(returns_to_plot, normed=True, bins=100)
     plt.ylabel('reward distribution')
     plt.show()
 
@@ -273,7 +280,6 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
         agent.print_q_table()
         agent.plot_q_table(folder)
         agent.plot_optimal_actions_at_each_position(folder)
-        agent.save_q_table(folder)
 
 
 def test_agent(using_tkinter_test, agent, nb_episodes=1, max_nb_steps=20, sleep_time=0.001):
@@ -353,10 +359,10 @@ if __name__ == "__main__":
         json.dump(dict_configuration, outfile)
 
     # Three possible algorithm to learn the state-action table:
-    # method_used = "q"
+    method_used = "q"
     # method_used = "q_approximation"
     # method_used = "sarsa"
-    method_used = "expected_sarsa"
+    # method_used = "expected_sarsa"
     # method_used = "sarsa_lambda"
     # method_used = "DQN"
 
@@ -407,7 +413,9 @@ if __name__ == "__main__":
 
         # success conditions
         window_success_res = 100
-        threshold_success_training = 1
+        threshold_success_training = 13
+        # 22.97 for self.reward = 1 + self.reward / max(self.rewards_dict.values())
+        # q_max = 9.23562904132267 for expected_sarsa
 
         # after = Register an alarm callback that is called after a given time.
         # give results as reference

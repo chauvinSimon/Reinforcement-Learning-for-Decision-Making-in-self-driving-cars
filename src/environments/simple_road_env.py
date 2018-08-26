@@ -499,6 +499,9 @@ class Road(tk.Tk, object):  # if tk is supported
         #     if self.state_ego_velocity == self.goal_coord[0]:
         #         self.reward += self.rewards_dict["goal"]
 
+        # normalization
+        # self.reward = 1 + self.reward / max(self.rewards_dict.values())
+
         return self.reward, termination_flag
 
     def masking_function(self):

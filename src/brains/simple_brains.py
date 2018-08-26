@@ -53,7 +53,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import random
 from abc import ABC, abstractmethod
-
+import os
 from sklearn.linear_model import SGDRegressor
 from sklearn.neural_network import MLPRegressor
 import sklearn.pipeline
@@ -199,6 +199,10 @@ class Agent(ABC):
         id_list_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s[0]) &
                                            (self.q_table[self.state_features_list[1]] == s[1])].tolist()
         id_row_state = id_list_state[0]
+        # row = self.q_table.loc[id_row_state]
+        # print("row = \n{}".format(row))
+        # filtered_row = row.filter(self.actions_list)
+        # print("filtered_row = \n{}".format(filtered_row))
         return id_row_state
 
     def load_q_table(self, file_path="q_table"):
@@ -209,7 +213,9 @@ class Agent(ABC):
         """
         try:
             # from pickle
-            self.q_table = pd.read_pickle(file_path + '.pkl')
+            grand_grand_parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            results_dir = os.path.abspath(grand_grand_parent_dir + "/results/simple_road/" + file_path + '.pkl')
+            self.q_table = pd.read_pickle(results_dir)
             return True
 
         except Exception as e:
@@ -393,7 +399,12 @@ class SarsaTable(Agent):
             # next state is not terminal
             # consider the value of the next state with the action a_
             # using the actual action a_ to evaluate Q(s_, a_) - SARSA is therefore said "on-policy"
-            q_target = r + self.gamma * self.q_table.loc[id_row_next_state, a_]
+            row = self.q_table.loc[id_row_next_state]
+            filtered_row = row.filter(self.actions_list)
+            q_max = max(filtered_row)
+            q_expected = self.q_table.loc[id_row_next_state, a_]
+            q_target = r + self.gamma * q_expected
+            print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
 
         # update q-value - Delta is the TD-error
         self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
@@ -423,7 +434,7 @@ class ExpectedSarsa(Agent):
         # get id of the row of the next state
         id_row_next_state = self.get_id_row_state(s_)
 
-        # get q-value of the pair (previous_state, action)
+        # get q-value of the tuple (previous_state, action)
         q_predict = self.q_table.loc[id_row_previous_state, a]
 
         # Check if new state is terminal
@@ -431,26 +442,21 @@ class ExpectedSarsa(Agent):
             # next state is terminal
             # goal state has no value
             q_target = r
+            # Trying to reduce chance of random action as we train the model.
+
         else:
-            # next state is not terminal
             row = self.q_table.loc[id_row_next_state]
-            # print("row = \n{}".format(row))
             filtered_row = row.filter(self.actions_list)
-            # print("filtered_row = \n{}".format(filtered_row))
-            # print("max_filtered_row = \n{}".format(max(filtered_row)))
+            q_max = max(filtered_row)
             q_expected = 0
             for a in self.actions_list:
-                # print("res = \n{}".format(res))
-                # print("state_action = \n{}".format(state_action))
-                value_a = filtered_row[a]
-                # print("q = {} for a = {}".format(value_a, a))
                 q_expected += filtered_row[a] * greedy_epsilon * 1 / len(self.actions_list)
+            q_expected += (1 - greedy_epsilon) * q_max
+            print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
 
-            q_expected += (1 - greedy_epsilon) * max(filtered_row)
-            # print("q_expected = {} for epsilon = {}".format(q_expected, greedy_epsilon))
             q_target = r + self.gamma * q_expected
 
-        # update q-value - Delta is the TD-error
+        # update q-value following Q-learning - Delta is the TD-error
         self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
 
 
@@ -491,7 +497,14 @@ class QLearningTable(Agent):
             # next state is not terminal
             # consider the best value of the next state. Q-learning = sarsa_max
             # using max to evaluate Q(s_, a_) - Q-learning is therefore said "off-policy"
-            q_target = r + self.gamma * self.q_table.loc[id_row_next_state, :].max()
+            row = self.q_table.loc[id_row_next_state]
+            filtered_row = row.filter(self.actions_list)
+            # print(s)
+            # print("filtered_row = \n{}".format(filtered_row))
+            # print("max(filtered_row) = \n{}".format(max(filtered_row)))
+            q_expected = max(filtered_row)
+            q_target = r + self.gamma * q_expected
+            # q_target = r + self.gamma * self.q_table.loc[id_row_next_state, :].max()
 
         # update q-value following Q-learning - Delta is the TD-error
         self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
