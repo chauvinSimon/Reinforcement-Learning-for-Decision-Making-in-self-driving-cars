@@ -63,7 +63,7 @@ def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_d
     :return: [list] returns_list - to be displayed
     """
     # condition for success
-    threshold_success = 10  # to solve the env, = average score over the last x scores, where x = window_success
+    threshold_success = 13  # to solve the env, = average score over the last x scores, where x = window_success
     window_success = 100
     returns_window = deque(maxlen=window_success)  # last x scores, where x = window_success
 
@@ -112,12 +112,14 @@ def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_d
 
         # run episodes
         for step_id in range(max_nb_steps):
+            # ToDo: how to penalize the agent that does not terminate the episode?
 
             # fresh env
             if using_tkinter:
                 env.render(sleep_time)
 
             if (method == "sarsa") or (method == "sarsa_lambda"):
+                # Choose an action At+1 following the same e-greedy policy based on current Q
                 next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
 
                 # agent choose current_action based on observation
@@ -188,7 +190,7 @@ def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_d
         returns_window.append(return_of_episode)  # save most recent score
         if episode_id % 100 == 0:
             time_intermediate = time.time()
-            print('\n --- Episode={} ---\n eps={}\n Average Score= {:.2f} \n duration={:.2f}'.format(
+            print('\n --- Episode={} ---\n eps={}\n Average Score in returns_window = {:.2f} \n duration={:.2f}'.format(
                 episode_id, greedy_epsilon, np.mean(returns_window), time_intermediate - time_start))
 
         if episode_id % 20 == 0:
@@ -383,7 +385,7 @@ if __name__ == "__main__":
     flag_testing = True
 
     if flag_training:
-        display_learning_results = False
+        display_learning_results = True
         # training parameters
         eps_start_learning = 1.0
         eps_end_training = 0.01

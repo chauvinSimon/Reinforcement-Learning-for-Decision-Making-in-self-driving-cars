@@ -1,8 +1,9 @@
 """
-This part of code is the Q-learning brain, which is a brain of the agent.
-All decisions are made in here.
+This part of code defines the brain of the agent.
+- decisions are made here
+- the q-table is updated here
 
-Three TD-based model-free control algorithms (https://www.youtube.com/watch?v=2-OljVM15gc):
+Three TD-based model-free control algorithms inherit from the parent RL. Only the learn() method differs:
 -Q-learning
 -SARSA
 -SARSA-lambda
@@ -22,13 +23,15 @@ Q-Learning tends to converge a little slower, but has the capability to continue
 Also, Q-Learning is not guaranteed to converge when combined with linear approximation.
 
 All are model-free
-Ask yourself this question:
-After learning, can the agent make predictions about what the next state and reward will be before it takes each action?
-If it can, then it’s a model-based RL algorithm.
-If it cannot, it’s a model-free algorithm.
+- Ask yourself this question:
+- After learning, can the agent make predictions about what the next state and reward will be before it takes each action?
+    -- If it can, then it’s a model-based RL algorithm.
+    -- If it cannot, it’s a model-free algorithm.
 
-
-Tabular representation to maintain and manipulate the value of every state
+Tabular representation of the discrete (action/state) pairs and the associated q-value:
+- I use pd.DataFrame
+- one could use collections.defaultdict for structure as well
+- np.array should be possible as well
 
 Structure of the object named "q_table":
 [id][-------------------------actions---------------------------] [--state features--]
@@ -39,9 +42,9 @@ Structure of the object named "q_table":
 3       2.178   0.000000       0.0000   0.000000        0.000000       6.0       2.0
 
 To Do:
--try approximation function (Fixed Sparse Representations), (Incremental Feature Dependency Discovery)
--decay learning rate
--expand the state space - add pedestrian
+- try approximation function (Fixed Sparse Representations), (Incremental Feature Dependency Discovery)
+- decay learning rate
+- expand the state space - add changing pedestrian position
 """
 
 import numpy as np
@@ -49,86 +52,93 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import random
+from abc import ABC, abstractmethod
+
 from sklearn.linear_model import SGDRegressor
 from sklearn.neural_network import MLPRegressor
 import sklearn.pipeline
 import sklearn.preprocessing
 from sklearn.kernel_approximation import RBFSampler
-
-# import pickle
-# import tables  # (PyTables)
 plt.rcParams['figure.figsize'] = [20, 10]
 
+# ToDo: rename RL to Agent
 
-class RL(object):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
+
+class RL(ABC):
+    def __init__(self, actions_names, state_features, learning_rate=0.9, gamma=0.9, load_q_table=False):
         """
+        Parent abstract class (the method learn() is to be defined)
 
-        :param actions: list of possible actions (str)
-        :param state: list of features forming the state (str)
-        :param learning_rate: (between 0 and 1) - Non-constant learning rate must be used?
-        :param reward_decay: discount factor (between 0 and 1)
+        :param actions_names: [string] list of possible actions
+        :param state_features: [string] list of features forming the state
+        :param learning_rate: [int between 0 and 1] - Non-constant learning rate must be used?
+        :param gamma: [int between 0 and 1] discount factor
         If gamma is closer to one, the agent will consider future rewards with greater weight,
         willing to delay the reward.
-        :param e_greedy: proportion of random sampling (between 0 and 1)
-        :param load_q_table: loading the computed q-values from file
+        :param load_q_table: [bool] flag to load the q-values DataFrame from file
         """
-        self.actions_list = actions
-        self.action_taken = None
-        self.state_features_list = state
-        columns_q_table = actions + state
+        # environment information
+        self.actions_list = actions_names  # string!
+        self.state_features_list = state_features  # string!
+        columns_q_table = actions_names + state_features  # string!
 
-        self.lr = learning_rate
-        self.gamma = reward_decay
-        # self.epsilon = e_greedy
+        # hyper-parameters
+        self.lr = learning_rate  # alpha
+        self.gamma = gamma
+        # epsilon scheduling is defined in the main
 
+        # structure to store the q-values of the (state/action) pairs
         if load_q_table:
-            try:
-                self.load_q_table()
+            if self.load_q_table():
                 print("Load success")
-            except ImportError:  # I could not set an empty "except" - may be improved
-                print("Cannot load")
             else:
-                self.q_table = pd.DataFrame(columns=columns_q_table, dtype=np.float64)
+                # ToDo: dtype=np.float32 not necessary. Try lower precision
+                self.q_table = pd.DataFrame(columns=columns_q_table, dtype=np.float32)
         else:
-            self.q_table = pd.DataFrame(columns=columns_q_table, dtype=np.float64)
+            self.q_table = pd.DataFrame(columns=columns_q_table, dtype=np.float32)
         # print(self.q_table.columns)
 
-        # for plotting
+        # settings for plotting
         colours_list = ['green', 'red', 'blue', 'yellow', 'orange']
         self.action_to_color = dict(zip(self.actions_list, colours_list))
         self.size_of_largest_element = 800
 
     def choose_action(self, observation, masked_actions_list, greedy_epsilon):
         """
-        chose an action based on the policy of the q-table
-        with an e_greedy approach
-        :param observation: current state
-        :param masked_actions_list: forbidden actions
-        :param greedy_epsilon: probability of random choice for epsilon-greedy action selection
-        :return:
+        chose an action, following the policy based on the q-table
+        with an e_greedy approach and action masking
+        :param observation: [list of int] current discrete state
+        :param masked_actions_list: [list of string] forbidden actions
+        :param greedy_epsilon: [float in 0-1] probability of random choice for epsilon-greedy action selection
+        :return: [string] - the name of the action
         """
         # print("state before choosing an action: %s " % observation)
         self.check_state_exist(observation)
 
         # apply action masking
         possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
+
         if not possible_actions:
-            print("!!!!! No possible_action !!!!!")
+            print("!!!!! WARNING - No possible_action !!!!!")
 
         # Epsilon-greedy action selection
         if np.random.uniform() > greedy_epsilon:
             # choose best action
 
-            # read the row corresponding to the state and restrict to action columns
-            state_action = self.q_table.loc[(self.q_table[self.state_features_list[0]] == observation[0])
-                                            & (self.q_table[self.state_features_list[1]] == observation[1])]
+            # read the row corresponding to the state
+            state_action = self.q_table.loc[
+                (self.q_table[self.state_features_list[0]] == observation[0])
+                & (self.q_table[self.state_features_list[1]] == observation[1])
+                # & (self.q_table[self.state_features_list[2]] == observation[2])
+            ]
 
+            # only consider the action names - remove the state information
             state_action = state_action.filter(self.actions_list, axis=1)
 
-            # some actions may have same value - hence shuffle
+            # shuffle - if different actions have equal q-values, chose randomly, not the first one
             state_action = state_action.reindex(np.random.permutation(state_action.index))
 
+            # restrict to allowed actions
             state_action = state_action.filter(items=possible_actions)
             # print("state_action 3/3 : %s" % state_action)
 
@@ -138,6 +148,7 @@ class RL(object):
                 print('random action sampled among allowed actions')
             else:
                 action = state_action.idxmax(axis=1)
+                # Return index of first occurrence of maximum over requested axis (with shuffle)
 
             # get first element of the pandas series
             action_to_do = action.iloc[0]
@@ -148,17 +159,23 @@ class RL(object):
             action_to_do = np.random.choice(possible_actions)
             # print("\t-- RANDOM action= %s " % action_to_do)
 
-        self.action_taken = action_to_do
         return action_to_do
 
+    @abstractmethod
     def learn(self, *args):
+        """
+        Update the agent's knowledge, using the most recently sampled tuple
+        This method is implemented in each children agent
+        """
+        # raise NotImplementedError('subclasses must override learn()!')
         pass
 
     def check_state_exist(self, state):
         """
         read if the state has already be encountered
-        if not, add it to the table
-        :param state:
+        if not, add it to the table and initialize its q-value
+        with collections.defaultdict or np.array, this would have not be required
+        :param state: [list of int] current discrete state
         :return: -
         """
         # try to find the index of the state
@@ -167,33 +184,34 @@ class RL(object):
                                                            state[1])].tolist()
 
         if not state_id_list_previous_state:
+            # ToDo: is zero-value initialization relevant?
             # append new state to q table: Q(a,s)=0 for each action a
             new_data = np.concatenate((np.array(len(self.actions_list)*[0]), np.array(state)), axis=0)
             # print("new_data to add %s" % new_data)
             new_row = pd.Series(new_data, index=self.q_table.columns)
             self.q_table = self.q_table.append(new_row, ignore_index=True)
 
+    def get_id_row_state(self, s):
+        """
+
+        :param s: [list of int] state
+        :return: [int] id of the row corresponding to the state in self.q_table
+        """
+        # get id of the row of the previous state (= id of the previous state)
+        id_list_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s[0]) &
+                                           (self.q_table[self.state_features_list[1]] == s[1])].tolist()
+        id_row_state = id_list_state[0]
+        return id_row_state
+
     def load_q_table(self, file_path="q_table"):
         """
-        at the start, load a q-table
-        working with h5, csv and pickle
+        open_model
+        working with h5, csv or pickle format
         :return: -
         """
         try:
-            # from csv
-            # self.q_table = pd.read_csv(file_path + ".csv", sep='\t', encoding='utf-8')
-            # print(self.q_table)
-
             # from pickle
             self.q_table = pd.read_pickle(file_path + '.pkl')
-            # print(self.q_table)
-
-            # from h5
-            # self.q_table = pd.read_hdf(file_path + '.h5', 'q_table')
-            # store = pd.HDFStore('q_table_BU.h5')
-            # self.q_table = store['q_table']
-            # store.close()
-            # print(self.q_table)
             return True
 
         except Exception as e:
@@ -208,20 +226,12 @@ class RL(object):
         :return: -
         """
         filename = "q_table"
+        # sort series according to the position
+        self.q_table = self.q_table.sort_values(by=[self.state_features_list[0]])
         try:
-            # to csv - Issue: add a first column
-            # self.q_table.to_csv(filename + ".csv", sep='\t', encoding='utf-8')
-            # print("Saved as " + filename + ".csv")
-
             # to pickle
             self.q_table.to_pickle(save_directory + filename + ".pkl")
             print("Saved as " + filename + ".pkl")
-
-            # to h5
-            store = pd.HDFStore(save_directory + filename + '.h5')
-            store['q_table'] = self.q_table
-            store.close()
-            print("Saved as " + filename + ".h5")
 
         except Exception as e:
             print(e)
@@ -229,11 +239,13 @@ class RL(object):
     def print_q_table(self):
         """
         at the end, display the q-table
+        One could also use .head()
         :return: -
         """
         # sort series according to the position
         self.q_table = self.q_table.sort_values(by=[self.state_features_list[0]])
-        print(self.q_table.to_string())
+        print(self.q_table.head())
+        # print(self.q_table.to_string())
 
     def plot_q_table(self, folder):
         """
@@ -299,7 +311,8 @@ class RL(object):
 
     def plot_optimal_actions_at_each_position(self, folder):
         """
-        plotting the best action to take for each position
+        plotting the best action to take for each state
+        also quantify the relative confidence
         :return: -
         """
         # scaling
@@ -346,7 +359,7 @@ class RL(object):
 
 
 # on-policy: Unlike Q learning which is a offline updating method, Sarsa is updating while in the current trajectory
-# SARSA can only learn from myself (from the experience and transition I met in the past)
+# SARSA can only learn from itself (from the experience and transition it met in the past)
 class SarsaTable(RL):
     def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
         super(SarsaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
@@ -364,17 +377,13 @@ class SarsaTable(RL):
         """
         self.check_state_exist(s_)
 
-        # get id of the row of the previous state (= id of the previous state)
-        id_list_previous_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s[0]) &
-                                                    (self.q_table[self.state_features_list[1]] == s[1])].tolist()
-        id_row_previous_state = id_list_previous_state[0]
+        # get id of the row of the previous state
+        id_row_previous_state = self.get_id_row_state(s)
 
-        # get id of the row of the next state (= id of the next state)
-        id_list_next_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s_[0]) &
-                                                (self.q_table[self.state_features_list[1]] == s_[1])].tolist()
-        id_row_next_state = id_list_next_state[0]
+        # get id of the row of the next state
+        id_row_next_state = self.get_id_row_state(s_)
 
-        # get q-value of the tuple (previous_state, action)
+        # get q-value of the pair (previous_state, action)
         q_predict = self.q_table.loc[id_row_previous_state, a]
 
         # Check if new state is terminal
@@ -409,15 +418,11 @@ class QLearningTable(RL):
         """
         self.check_state_exist(s_)
 
-        # get id of the row of the previous state (= id of the previous state)
-        id_list_previous_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s[0]) &
-                                                    (self.q_table[self.state_features_list[1]] == s[1])].tolist()
-        id_row_previous_state = id_list_previous_state[0]
+        # get id of the row of the previous state
+        id_row_previous_state = self.get_id_row_state(s)
 
-        # get id of the row of the next state (= id of the next state)
-        id_list_next_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s_[0]) &
-                                                (self.q_table[self.state_features_list[1]] == s_[1])].tolist()
-        id_row_next_state = id_list_next_state[0]
+        # get id of the row of the next state
+        id_row_next_state = self.get_id_row_state(s_)
 
         # get q-value of the tuple (previous_state, action)
         q_predict = self.q_table.loc[id_row_previous_state, a]
@@ -429,13 +434,9 @@ class QLearningTable(RL):
             q_target = r
             # Trying to reduce chance of random action as we train the model.
 
-            # Updated epsilon
-            # self.epsilon = self.epsilon / (self.epsilon + 0.05)
-            # print("updated epsilon = %s" % self.epsilon)
-
         else:
             # next state is not terminal
-            # consider the best value of the next state
+            # consider the best value of the next state. Q-learning = sarsa_max
             # using max to evaluate Q(s_, a_) - Q-learning is therefore said "off-policy"
             q_target = r + self.gamma * self.q_table.loc[id_row_next_state, :].max()
 
@@ -468,6 +469,7 @@ class SarsaLambdaTable(RL):
         """
         read if the state has already be encountered
         if not, add it to the table
+        update the eligibility_trace too
         :param state:
         :return: -
         """
@@ -483,13 +485,13 @@ class SarsaLambdaTable(RL):
             new_row = pd.Series(new_data, index=self.q_table.columns)
             self.q_table = self.q_table.append(new_row, ignore_index=True)
 
-            # !!!!!!!!!
             # also update eligibility trace
             self.eligibility_trace = self.eligibility_trace.append(new_row, ignore_index=True)
 
     def learn(self, s, a, r, s_, a_, termination_flag):
         """
         update the q-table based on the observed experience S.A.R.S.A
+        update the eligibility_trace too
         :param s: previous state (list of int)
         :param a: action (str)
         :param r: reward (int)
@@ -500,15 +502,11 @@ class SarsaLambdaTable(RL):
         """
         self.check_state_exist(s_)
 
-        # get id of the row of the previous state (= id of the previous state)
-        id_list_previous_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s[0]) &
-                                                    (self.q_table[self.state_features_list[1]] == s[1])].tolist()
-        id_row_previous_state = id_list_previous_state[0]
+        # get id of the row of the previous state
+        id_row_previous_state = self.get_id_row_state(s)
 
-        # get id of the row of the next state (= id of the next state)
-        id_list_next_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == s_[0]) &
-                                                (self.q_table[self.state_features_list[1]] == s_[1])].tolist()
-        id_row_next_state = id_list_next_state[0]
+        # get id of the row of the next state
+        id_row_next_state = self.get_id_row_state(s_)
 
         # get q-value of the tuple (previous_state, action)
         q_predict = self.q_table.loc[id_row_previous_state, a]
@@ -546,6 +544,8 @@ class SarsaLambdaTable(RL):
 # off-policy q-learning with Q-table Approximation
 class QLearningApproximation(RL):
     """
+    Not finish!
+    ToDo: complete it
     SGD is sensitive to feature scaling just like batch GD. Hence using StandardScaler.
     Scaling on the state before applying a featurizer
     Then two possible estimators:
@@ -786,9 +786,6 @@ class QLearningApproximation(RL):
             # choose random action
             action_to_do_approximation = np.random.choice(possible_actions)
             # print("\t-- RANDOM action= %s " % action_to_do)
-
-        # self.action_taken = action_to_do
-        self.action_taken = action_to_do_approximation
 
         return action_to_do_approximation
 

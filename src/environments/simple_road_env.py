@@ -78,7 +78,7 @@ import random
 
 UNIT = 20   # pixels per grid cell
 MAZE_H = 4  # grid height
-MAZE_W = 20  # grid width
+MAZE_W = 20  # grid width  !! Adapt the threshold_success in the main accordingly
 HALF_SIZE = UNIT * 0.35  # half size factor of square in a cell
 Y_COORD = 0  # blocking motion of ego agent in one row - no vertical motion allowed
 
@@ -89,7 +89,7 @@ def one_hot_encoding(feature_to_encode):
     :param feature_to_encode: int. For instance 5
     :return: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0] if UNIT=10
     """
-    repr_size = 20
+    repr_size = MAZE_W
     one_hot_list = np.zeros(repr_size)
     # one_hot_list = [0] * UNIT
     if feature_to_encode < repr_size:
@@ -102,7 +102,10 @@ def one_hot_encoding(feature_to_encode):
 
 def process_state(input_state):
     """
-
+    extract features from the state to build an "observation"
+    The agent may not know exactly its absolute position.
+    But it may have an estimate of the relative distance to the obstacle
+    Hence compute the difference in position
     :param input_state:
     :return: representation of the state understood by the RL agent
     """
@@ -111,7 +114,7 @@ def process_state(input_state):
     obstacle_position = input_state[2]
 
     # one-hot encoding of the state
-    repr_size = 20
+    repr_size = MAZE_W
     encoded_position = one_hot_encoding(ego_position)
     encoded_velocity = one_hot_encoding(velocity)
 
@@ -244,14 +247,14 @@ class Road(tk.Tk, object):  # if tk is supported
             # Tk window
             self.title('road')
             self.geometry('{0}x{1}'.format(MAZE_W * UNIT, MAZE_H * UNIT))
-            self._build_road()
+            self.build_road()
 
     @staticmethod
     def sample_position_obstacle():
         # fix_position_obstacle = 12
         # return fix_position_obstacle
         # random_position_obstacle = random.randint(1, MAZE_W)
-        random_position_obstacle = random.randint(10, 12)
+        random_position_obstacle = random.randint(MAZE_W//2 - 1, MAZE_W//2 + 2)
         # print("{} = random_position_obstacle".format(random_position_obstacle))
         return random_position_obstacle
 
@@ -263,13 +266,12 @@ class Road(tk.Tk, object):  # if tk is supported
         print(self.rewards_dict)
         print(self.initial_state)
 
-    def _build_road(self):
+    def build_road(self):
         """
         To build the Tk window
         Only called once at the start
         :return:  None
         """
-        # underscore = weak "internal use" indicator.
         if self.using_tkinter:
 
             # create canvas
@@ -526,8 +528,8 @@ class Road(tk.Tk, object):  # if tk is supported
 
     def render(self, sleep_time):
         """
-        :param sleep_time:
-        Not necessary? Yes, for the demo
+        :param sleep_time: [float]
+        necessary for demo()
         :return:
         """
         if self.using_tkinter:
