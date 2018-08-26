@@ -3,7 +3,7 @@ This part of code defines the brain of the agent.
 - decisions are made here
 - the q-table is updated here
 
-Three TD-based model-free control algorithms inherit from the parent RL. Only the learn() method differs:
+Three TD-based model-free control algorithms inherit from the parent Agent. Only the learn() method differs:
 -Q-learning
 -SARSA
 -SARSA-lambda
@@ -61,10 +61,8 @@ import sklearn.preprocessing
 from sklearn.kernel_approximation import RBFSampler
 plt.rcParams['figure.figsize'] = [20, 10]
 
-# ToDo: rename RL to Agent
 
-
-class RL(ABC):
+class Agent(ABC):
     def __init__(self, actions_names, state_features, learning_rate=0.9, gamma=0.9, load_q_table=False):
         """
         Parent abstract class (the method learn() is to be defined)
@@ -360,7 +358,7 @@ class RL(ABC):
 
 # on-policy: Unlike Q learning which is a offline updating method, Sarsa is updating while in the current trajectory
 # SARSA can only learn from itself (from the experience and transition it met in the past)
-class SarsaTable(RL):
+class SarsaTable(Agent):
     def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
         super(SarsaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
 
@@ -402,7 +400,7 @@ class SarsaTable(RL):
 
 
 # off-policy
-class QLearningTable(RL):
+class QLearningTable(Agent):
     def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
         super(QLearningTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
 
@@ -449,7 +447,7 @@ class QLearningTable(RL):
 # - All the episode (Monte Carlo) (lambda=1)
 # - in between (Lambda in [0,1])
 # Idea is to update and give reward to all the steps that contribute to the end return
-class SarsaLambdaTable(RL):
+class SarsaLambdaTable(Agent):
     def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False,
                  trace_decay=0.9):
         super(SarsaLambdaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
@@ -542,7 +540,7 @@ class SarsaLambdaTable(RL):
 
 
 # off-policy q-learning with Q-table Approximation
-class QLearningApproximation(RL):
+class QLearningApproximation(Agent):
     """
     Not finish!
     ToDo: complete it

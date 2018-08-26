@@ -47,13 +47,20 @@ import math
 plt.rcParams['figure.figsize'] = [20, 10]
 
 
-def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_decay=0.935,
+def train_agent(using_tkinter, agent, method, window_success, threshold_success, returns_list, steps_counter_list,
+                eps_start=0.9, eps_end=0.01, eps_decay=0.935,
                 max_nb_episodes=2000, max_nb_steps=25, sleep_time=0.001):
+    # def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_decay=0.935,
+    #                 max_nb_episodes=2000, max_nb_steps=25, sleep_time=0.001):
     """
 
     :param using_tkinter: [bool] to display the environment, or not
     :param agent: [brain object]
     :param method: [string] value-based learning method - either sarsa or q-learning
+    :param window_success: [int]
+    :param threshold_success: [float] to solve the env, = average score over the last x scores, where x = window_success
+    :param returns_list: [list of float]
+    :param steps_counter_list: [list of int]
     :param eps_start: [float]
     :param eps_end: [float]
     :param eps_decay: [float]
@@ -62,17 +69,14 @@ def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_d
     :param sleep_time: [int] sleep_time between two steps [ms]
     :return: [list] returns_list - to be displayed
     """
-    # condition for success
-    threshold_success = 13  # to solve the env, = average score over the last x scores, where x = window_success
-    window_success = 100
     returns_window = deque(maxlen=window_success)  # last x scores, where x = window_success
 
     # probability of random choice for epsilon-greedy action selection
     greedy_epsilon = eps_start
 
     # record for each episode:
-    steps_counter_list = []  # number of steps in each episode - look if some get to max_nb_steps
-    returns_list = []  # return in each episode
+    # steps_counter_list = []  # number of steps in each episode - look if some get to max_nb_steps
+    # returns_list = []  # return in each episode
     best_trajectories_list = []
 
     # track maximum return
@@ -226,7 +230,7 @@ def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_d
     if using_tkinter:
         env.destroy()
 
-    return returns_list, window_success, steps_counter_list
+    # return returns_list, steps_counter_list
 
 
 def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_window, steps_counter_list_to_plot):
@@ -327,7 +331,7 @@ if __name__ == "__main__":
     state_features_list = ["position", "velocity"]  # , "obstacle_position"]
 
     # the environment
-    flag_tkinter = False
+    flag_tkinter = True
     initial_state = [0, 3, 12]
     goal_velocity = 3
     env = Road(flag_tkinter, actions_list, state_features_list, initial_state, goal_velocity)
@@ -381,7 +385,7 @@ if __name__ == "__main__":
                                    # saver_dir='/tmp/tensorflow_logs/RL/saver/'
                                    saver_dir=None
                                    )
-    flag_training = True
+    flag_training = False
     flag_testing = True
 
     if flag_training:
@@ -396,20 +400,29 @@ if __name__ == "__main__":
         max_nb_steps_training = 25
         sleep_time_between_steps = 0.0005
 
+        # success conditions
+        window_success_res = 100
+        threshold_success_training = -50
+
         # after = Register an alarm callback that is called after a given time.
-        # giving the reference to the function as well as the parameter
+        # give results as reference
+        returns_list_res, steps_counter_list_res = [], []
         if flag_tkinter:
-            # (time_delay, method_to_execute):
-            returns_list_res, window_success_res, steps_counter_list_res = env.after(
-                100, train_agent, flag_tkinter, brain_agent, method_used,
-                eps_start_learning, eps_end_training, eps_decay_training, max_nb_episodes_training,
-                max_nb_steps_training, sleep_time_between_steps)
+            # after(self, time [ms] before execution of func(*args), func=None, *args):
+            # ?? Bug: ValueError: too many values to unpack (expected 3)?? Why 3?
+            env.after(100, train_agent, flag_tkinter, brain_agent, method_used,
+                      window_success_res, threshold_success_training, returns_list_res,
+                      steps_counter_list_res, eps_start_learning, eps_end_training, eps_decay_training,
+                      max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps)
             env.mainloop()
+            print("returns_list_res = {}, window_success_res = {}, steps_counter_list_res = {}".format(
+                returns_list_res, window_success_res, steps_counter_list_res))
         else:
-            returns_list_res, window_success_res, steps_counter_list_res = train_agent(
-                flag_tkinter, brain_agent, method_used, eps_start_learning, eps_end_training, eps_decay_training,
-                max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps)
+            train_agent(flag_tkinter, brain_agent, method_used, window_success_res, threshold_success_training,
+                        returns_list_res, steps_counter_list_res, eps_start_learning, eps_end_training,
+                        eps_decay_training, max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps)
         if display_learning_results:
+            # ToDo: plot horizontal threshold_success_training
             display_results(brain_agent, method_used, returns_list_res, window_success_res, steps_counter_list_res)
 
     if flag_testing:

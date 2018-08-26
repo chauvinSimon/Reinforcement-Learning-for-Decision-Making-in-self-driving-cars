@@ -1,7 +1,8 @@
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# Results
+# Results and log
+*.log
 results/*
 
 # Others

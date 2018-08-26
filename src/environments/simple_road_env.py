@@ -74,7 +74,7 @@ import numpy as np  # but trying to avoid using it (np.array cannot be converted
 # else:
 import tkinter as tk
 import random
-
+from utils.logger import Logger
 
 UNIT = 20   # pixels per grid cell
 MAZE_H = 4  # grid height
@@ -87,7 +87,7 @@ def one_hot_encoding(feature_to_encode):
     """
 
     :param feature_to_encode: int. For instance 5
-    :return: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0] if UNIT=10
+    :return: [0, 0, 0, 0, 0, 1, 0, 0, 0, 0] if MAZE_W=10
     """
     repr_size = MAZE_W
     one_hot_list = np.zeros(repr_size)
@@ -111,14 +111,14 @@ def process_state(input_state):
     """
     ego_position = input_state[0]
     velocity = input_state[1]
-    obstacle_position = input_state[2]
-
-    # one-hot encoding of the state
-    repr_size = MAZE_W
-    encoded_position = one_hot_encoding(ego_position)
-    encoded_velocity = one_hot_encoding(velocity)
-
-    one_hot_state = np.row_stack((encoded_position, encoded_velocity))
+    # obstacle_position = input_state[2]
+    #
+    # # one-hot encoding of the state
+    # repr_size = MAZE_W
+    # encoded_position = one_hot_encoding(ego_position)
+    # encoded_velocity = one_hot_encoding(velocity)
+    #
+    # one_hot_state = np.row_stack((encoded_position, encoded_velocity))
 
     # Filling the state representation with other rows
     # one_hot_state = np.row_stack((one_hot_state, np.zeros((repr_size, 82))))
@@ -130,7 +130,7 @@ def process_state(input_state):
     # print(np.shape(one_hot_state))  # Here one_hot_state is (84, 84)
 
     # ToDo: increase state for the brain
-    return [ego_position, velocity]  #, obstacle_position]
+    return [ego_position, velocity]  # , obstacle_position]
 
     # make one_hot_state have mean 0 and a variance of 1
     # print(one_hot_state)
@@ -143,23 +143,36 @@ def process_state(input_state):
     # return one_hot_state
 
 
-# !! Depending is tk is supported or not, manually change the inheritance !!
+# !! Depending is tk is supported or not, manually change the inheritance
+# !! uncomment the next line and comment the two next
 # class Road:  # if tk is NOT supported. Then make sure using_tkinter=False
 class Road(tk.Tk, object):  # if tk is supported
-    def __init__(self, using_tkinter, actions, state_features, initial_state, goal_velocity=4):
+    def __init__(self, using_tkinter, actions_names, state_features, initial_state, goal_velocity=4):
+        """
+
+        :param using_tkinter: [bool] flag for the graphical interface
+        :param actions_names: [string] list of possible actions
+        :param state_features: [string] list of features forming the state. sting !!
+        :param initial_state: [list of int]
+        :param goal_velocity: [int]
+        """
+        # graphical interface
         if using_tkinter:
             super(Road, self).__init__()
-        self.actions_list = actions
-        self.colour_action_code = dict((el, "white") for el in actions)
+
+        # action space
+        self.actions_list = actions_names
+
         # state is composed of
-        # - abscissa
+        # - absolute ego_position
         # - velocity
+        # - absolute position of obstacle
         self.state_features = state_features
-        # print("state_features %s " % state_features)
+        # print("state_features = {}".format(state_features))
 
         # Reward - the reward is update
-        # -during the transition (hard-constraints)
-        # -in the reward_function (only considering the new state)
+        # - during the transition (hard-constraints)
+        # - in the reward_function (only considering the new state)
         self.reward = 0
         self.rewards_dict = {
             # efficiency = Progress
@@ -180,25 +193,6 @@ class Road(tk.Tk, object):  # if tk is supported
             "action_change": -2
         }
 
-        # self.rewards_dict = {
-        #     # efficiency = Progress
-        #     "goal_with_good_velocity": 1,
-        #     "goal_with_bad_velocity": 1,
-        #     "per_step_cost": -0.1,
-        #     "under_speed": 0,
-        #
-        #     # traffic law
-        #     "over_speed": 0,
-        #     "over_speed_2": 0,
-        #
-        #     # safety
-        #     "over_speed_near_pedestrian": -0,
-        #
-        #     # Comfort
-        #     "negative_speed": 0,
-        #     "action_change": 0
-        # }
-
         self.max_velocity_1 = 4
         self.max_velocity_2 = 2
         self.max_velocity_pedestrian = 2
@@ -206,18 +200,16 @@ class Road(tk.Tk, object):  # if tk is supported
 
         # state - for the moment distinct variables
         self.initial_state = initial_state
-        self.state_position = self.initial_state[0]
-        self.state_velocity = self.initial_state[1]
+        self.state_ego_position = self.initial_state[0]
+        self.state_ego_velocity = self.initial_state[1]
         self.state_obstacle_position = self.initial_state[2]
-        self.previous_state_position = self.state_position
-        self.previous_state_velocity = self.state_velocity
+        self.previous_state_position = self.state_ego_position
+        self.previous_state_velocity = self.state_ego_velocity
         self.previous_action = None
 
         # environment:
-        # self.initial_position = [self.initial_state[0], Y_COORD]
         self.goal_coord = [MAZE_W - 1, 1]
         self.goal_velocity = goal_velocity
-        # random_position_obstacle = self.sample_position_obstacle()
         self.obstacle1_coord = [self.state_obstacle_position, 2]
         self.obstacle2_coord = [1, 3]
         self.initial_position = [self.initial_state[0], Y_COORD]
@@ -231,12 +223,15 @@ class Road(tk.Tk, object):  # if tk is supported
         velocity_list = range(len(colours_list)+1)
         self.colour_velocity_code = dict(zip(velocity_list, colours_list))
 
+        # graphical interface
         self.using_tkinter = using_tkinter
-
         # create the origin point in  the Tk frame
         self.origin_coord = [(x + y) for x, y in zip(self.initial_position, [0.5, 0.5])]
         # self.origin = UNIT * self.origin_coord
         self.origin = [x * UNIT for x in self.origin_coord]
+        self.canvas = None
+        self.rect = None
+        self.obstacle = None
 
         # self.rect = self.canvas.create_rectangle(
         #     self.origin[0] - HALF_SIZE, self.origin[1] - HALF_SIZE,
@@ -249,6 +244,9 @@ class Road(tk.Tk, object):  # if tk is supported
             self.geometry('{0}x{1}'.format(MAZE_W * UNIT, MAZE_H * UNIT))
             self.build_road()
 
+        # logging configuration
+        self.logger = Logger("road", "road_env.log", 0)
+
     @staticmethod
     def sample_position_obstacle():
         # fix_position_obstacle = 12
@@ -257,14 +255,6 @@ class Road(tk.Tk, object):  # if tk is supported
         random_position_obstacle = random.randint(MAZE_W//2 - 1, MAZE_W//2 + 2)
         # print("{} = random_position_obstacle".format(random_position_obstacle))
         return random_position_obstacle
-
-    def get_configuration(self):
-        """
-
-        :return:
-        """
-        print(self.rewards_dict)
-        print(self.initial_state)
 
     def build_road(self):
         """
@@ -319,6 +309,7 @@ class Road(tk.Tk, object):  # if tk is supported
         """
         Clean the canvas (remove agent)
         Clean the state (reinitialize it)
+        Sample a random position for the obstacle
         :return: the initial state amd the list of the masked actions
         """
         # self.update() - Not necessary?
@@ -340,8 +331,8 @@ class Road(tk.Tk, object):  # if tk is supported
                 obstacle1_center[0] + HALF_SIZE, obstacle1_center[1] + HALF_SIZE,
                 fill='black')
 
-        self.state_position = self.initial_state[0]
-        self.state_velocity = self.initial_state[1]
+        self.state_ego_position = self.initial_state[0]
+        self.state_ego_velocity = self.initial_state[1]
         self.state_obstacle_position = random_position_obstacle
         self.initial_state[2] = random_position_obstacle
         self.previous_state_position = self.initial_state[0]
@@ -351,13 +342,13 @@ class Road(tk.Tk, object):  # if tk is supported
 
     def transition(self, action):
         """
-        get velocity-state according to the desired command
+        update velocity in state according to the desired command
         :param action: desired action
         :return:
         """
         delta_velocity = 0
 
-        # print("current velocity: %s" % self.state_velocity)
+        # print("current velocity: %s" % self.state_ego_velocity)
         if action == self.actions_list[0]:  # maintain velocity
             delta_velocity = 0
         elif action == self.actions_list[1]:  # accelerate
@@ -368,9 +359,9 @@ class Road(tk.Tk, object):  # if tk is supported
             delta_velocity = -1
         elif action == self.actions_list[4]:  # slow down a lot
             delta_velocity = -2
-        # print("new velocity: %s" % self.state_velocity)
+        # print("new velocity: %s" % self.state_ego_velocity)
 
-        return self.state_velocity + delta_velocity
+        return self.state_ego_velocity + delta_velocity
 
     def step(self, action):
         """
@@ -378,44 +369,48 @@ class Road(tk.Tk, object):  # if tk is supported
         -calls the transition model
         -calls checks hard conditions
         -calls masking - to be implemented
-        :param action: the desired action (string)
+
+        :param action: [string] the desired action
         :return: tuple with:
         -new state (list)
         -reward (int)
-        -termination_flag (Boolean)
+        -termination_flag (bool)
         -masked_actions_list (list)
         """
         # print("desired action: %s" % action)
 
         # reminding the previous state
-        self.previous_state_velocity = self.state_velocity
-        self.previous_state_position = self.state_position
+        self.previous_state_velocity = self.state_ego_velocity
+        self.previous_state_position = self.state_ego_position
         self.previous_action = action
 
         # Transition = get the new state:
-        self.state_velocity = self.transition(action)
-        if self.state_velocity < 0:
-            self.state_velocity = 0
-            print("self.state_velocity cannot be < 0. Masking had a bug!!!!")
+        self.state_ego_velocity = self.transition(action)
+        if self.state_ego_velocity < 0:
+            self.state_ego_velocity = 0
+            message = "self.state_ego_velocity cannot be < 0 - a = {} - p = {} - v = {} " \
+                      "in step()".format(action, self.state_ego_position, self.state_ego_velocity)
+            self.logger.log(message, 3)
+
         # Assume simple relation: velocity expressed in [step/sec] and time step = 1s
-        desired_position_change = self.state_velocity
+        desired_position_change = self.state_ego_velocity
 
         # convert information from velocity to the change in position = number of steps
         tk_update_steps = [0, 0]
 
         # update the state - position
-        # print("old position: %s" % self.state_position)
-        self.state_position = self.state_position + desired_position_change
+        # print("old position: %s" % self.state_ego_position)
+        self.state_ego_position = self.state_ego_position + desired_position_change
         tk_update_steps[0] += desired_position_change * UNIT
 
-        # print("new position: %s" % self.state_position)
+        # print("new position: %s" % self.state_ego_position)
 
         if self.using_tkinter:
             # move agent in canvas
             self.canvas.move(self.rect, tk_update_steps[0], tk_update_steps[1])
             # update colour depending on speed
-            # print("self.state_velocity = {}".format(self.state_velocity))
-            new_colour = self.colour_velocity_code[self.state_velocity]
+            # print("self.state_ego_velocity = {}".format(self.state_ego_velocity))
+            new_colour = self.colour_velocity_code[self.state_ego_velocity]
             self.canvas.itemconfig(self.rect, fill=new_colour)
 
         # observe reward
@@ -427,11 +422,14 @@ class Road(tk.Tk, object):  # if tk is supported
         else:
             masked_actions_list = self.masking_function()
 
-        state_to_return = process_state([self.state_position, self.state_velocity, self.state_obstacle_position])
+        state_to_return = process_state(
+            [self.state_ego_position, self.state_ego_velocity, self.state_obstacle_position]
+        )
         return state_to_return, reward, termination_flag, masked_actions_list
 
     def reward_function(self, action):
         """
+        ToDo: normalize it
         To be refined
         - it needs to consider all the intermediate points between previous state and new state
         :return: the reward (int) and termination_flag (bool)
@@ -441,16 +439,16 @@ class Road(tk.Tk, object):  # if tk is supported
 
         # penalizing changes in action
         # it penalizes big changes (e.g. from speed_up_up to slow_down_down)
-        if self.state_velocity != self.previous_state_velocity:
-            change_in_velocity = self.state_velocity - self.previous_state_velocity
+        if self.state_ego_velocity != self.previous_state_velocity:
+            change_in_velocity = self.state_ego_velocity - self.previous_state_velocity
             self.reward += self.rewards_dict["action_change"] * abs(change_in_velocity)
 
         # test about the position
         # - for the goal
-        if self.state_position >= self.goal_coord[0]:
+        if self.state_ego_position >= self.goal_coord[0]:
             # not over-exceeding the goal
-            self.state_position = self.goal_coord[0]
-            if self.state_velocity == self.goal_velocity:
+            self.state_ego_position = self.goal_coord[0]
+            if self.state_ego_velocity == self.goal_velocity:
                 self.reward += self.rewards_dict["goal_with_good_velocity"]
             else:
                 self.reward += self.rewards_dict["goal_with_bad_velocity"]
@@ -462,39 +460,43 @@ class Road(tk.Tk, object):  # if tk is supported
             termination_flag = False
 
         # check max speed limitation
-        if self.state_velocity > self.max_velocity_1:
-            excess_in_velocity = self.state_velocity - self.max_velocity_1
+        if self.state_ego_velocity > self.max_velocity_1:
+            excess_in_velocity = self.state_ego_velocity - self.max_velocity_1
             self.reward += self.rewards_dict["over_speed"] * excess_in_velocity
-            print('hard constraints should have masked it !!!!!!!! to fast')
-            print("action %s, velocity %s and position %s" % (action, self.state_velocity, self.state_position))
+            message = "Too fast! in reward_function() -- hard constraints should have masked it. " \
+                      "a = {} - p = {} - v = {}".format(action, self.state_ego_position, self.state_ego_velocity)
+            self.logger.log(message, 3)
 
         # check minimal speed
-        if self.state_velocity < self.min_velocity:
-            excess_in_velocity = self.min_velocity - self.state_velocity
+        if self.state_ego_velocity < self.min_velocity:
+            excess_in_velocity = self.min_velocity - self.state_ego_velocity
             # well, basically, it will stay as rest - but still, we need to prevent negative speeds
             self.reward += self.rewards_dict["under_speed"] * excess_in_velocity
 
-            if self.state_velocity < 0:
+            if self.state_ego_velocity < 0:
                 excess_in_velocity = abs(self.min_velocity)
-                print('hard constraints should have masked it !!!!!!!! under speed')
-                print("action %s, velocity %s and position %s" % (action, self.state_velocity, self.state_position))
-                self.state_velocity = 0
+                message = "Under speed! in reward_function() -- hard constraints should have masked it. " \
+                          "a = {} - p = {} - v = {}".format(action, self.state_ego_position, self.state_ego_velocity)
+                self.logger.log(message, 3)
+
+                self.state_ego_velocity = 0
                 self.reward += self.rewards_dict["negative_speed"] * excess_in_velocity
 
         # limit speed when driving close to a pedestrian
-        if self.previous_state_position <= self.obstacle1_coord[0] <= self.state_position:
+        if self.previous_state_position <= self.obstacle1_coord[0] <= self.state_ego_position:
             # print(self.previous_state_position)
             # print('passing the pedestrian')
-            # print(self.state_position)
-            if self.state_velocity > self.max_velocity_pedestrian:
-                excess_in_velocity = self.state_velocity - self.max_velocity_pedestrian
+            # print(self.state_ego_position)
+            if self.state_ego_velocity > self.max_velocity_pedestrian:
+                excess_in_velocity = self.state_ego_velocity - self.max_velocity_pedestrian
                 self.reward += self.rewards_dict["over_speed_near_pedestrian"] * excess_in_velocity
-                # print('!!!! to fast !!!!')
-                # print(self.rewards_dict["over_speed_near_pedestrian"] * excess_in_velocity)
+                message = "Too fast close to obstacle! in reward_function() - a = {} - p = {} - po= {} - v = {}".format(
+                    action, self.state_ego_position, self.state_obstacle_position, self.state_ego_velocity)
+                self.logger.log(message, 1)
 
         # test about the velocity
-        # if self.state_position == self.pedestrian[0]:
-        #     if self.state_velocity == self.goal_coord[0]:
+        # if self.state_ego_position == self.pedestrian[0]:
+        #     if self.state_ego_velocity == self.goal_coord[0]:
         #         self.reward += self.rewards_dict["goal"]
 
         return self.reward, termination_flag
@@ -521,8 +523,10 @@ class Road(tk.Tk, object):  # if tk is supported
 
         # checking there are still possibilities left:
         if masked_actions_list == self.actions_list:
-            print("velocity %s and position %s" % (self.state_velocity, self.state_position))
-            print("!!!!! No possible_action found !!!!!")
+            print("velocity %s and position %s" % (self.state_ego_velocity, self.state_ego_position))
+            message = "No possible_action found! in masking_function() - a = {} - p = {} - po= {} - v = {}".format(
+                self.previous_action, self.state_ego_position, self.state_obstacle_position, self.state_ego_velocity)
+            self.logger.log(message, 4)
 
         return masked_actions_list
 
@@ -547,16 +551,20 @@ def demo(actions, nb_episodes_demo):
     :return:
     """
     for t in range(nb_episodes_demo):
-        env.reset()
+        _, masked_actions_list = env.reset()
         print("New Episode")
         while True:
-            sleep_time = 0.5
+            sleep_time = 0.0005
             if env.using_tkinter:
                 env.render(sleep_time)
 
-            # Pick randomly an action
-            id_action = random.randint(0, len(actions)-1)
-            action = actions[id_action]
+            # Pick randomly an action among non-masked actions
+
+            # possible_actions = [action for action in actions]
+            possible_actions = [action for action in actions if action not in masked_actions_list]
+            if not possible_actions:
+                print("!!!!! WARNING - No possible_action !!!!!")
+            action = np.random.choice(possible_actions)
 
             # Give the action to the environment and observe new state and reward
             state, reward, termination_flag, masked_actions_list = env.step(action)
