@@ -29,6 +29,7 @@ Bug:
 """
 
 import os
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -268,19 +269,60 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
         agent.save_q_table(folder)
 
 
-def test_agent(nb_training_episodes=20, sleep_time=0.001):
-    # ToDo: load weights and show one run
-    # Done subsequently in agent.save_q_table(folder)?
-    # --
-    print(nb_training_episodes)
-    print(sleep_time)
-    print("to be implemented")
-    pass
+def test_agent(using_tkinter_test, agent, nb_episodes=1, max_nb_steps=20, sleep_time=0.001):
+    """
+    load weights and show one run
+    :param using_tkinter_test: [bool]
+    :param agent: [brain object]
+    :param nb_episodes: [int]
+    :param max_nb_steps: [int]
+    :param sleep_time: [float]
+    :return: -
+    """
+    returns_list = []
+    grand_parent_dir_test = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    weight_file = os.path.abspath(grand_parent_dir_test + "/results/simple_road/q_table")
+    if agent.load_q_table(weight_file):
+
+        for episode_id in range(nb_episodes):
+            # reset the environment for a new episode
+            current_observation, masked_actions_list = env.reset()  # initial observation = initial state
+            print("{} = initial_observation".format(current_observation))
+            score = 0  # initialize the score
+            step_id = 0
+            while step_id < max_nb_steps:
+                step_id += 1
+                # fresh env
+                if using_tkinter_test:
+                    env.render(sleep_time)
+
+                # agent choose current_action based on observation
+                greedy_epsilon = 0
+                current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
+
+                next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
+
+                score += reward  # update the score
+
+                # update state
+                current_observation = next_observation
+                print("\r {}, {}, {}.".format(current_action, reward, termination_flag), end="")
+                sys.stdout.flush()
+                if termination_flag:  # exit loop if episode finished
+                    break
+
+            returns_list.append(score)
+            print("\n{}/{} - Return: {}".format(episode_id, nb_episodes, score))
+
+        print("---")
+        print("{} = average return".format(np.mean(returns_list)))
+    else:
+        print("cannot load weight_file at {}".format(weight_file))
 
 
 if __name__ == "__main__":
     actions_list = ["no_change", "speed_up", "speed_up_up", "slow_down", "slow_down_down"]
-    state_features_list = ["position", "velocity"]  #, "obstacle_position"]
+    state_features_list = ["position", "velocity"]  # , "obstacle_position"]
 
     # the environment
     flag_tkinter = False
@@ -341,6 +383,7 @@ if __name__ == "__main__":
     flag_testing = True
 
     if flag_training:
+        display_learning_results = False
         # training parameters
         eps_start_learning = 1.0
         eps_end_training = 0.01
@@ -364,14 +407,16 @@ if __name__ == "__main__":
             returns_list_res, window_success_res, steps_counter_list_res = train_agent(
                 flag_tkinter, brain_agent, method_used, eps_start_learning, eps_end_training, eps_decay_training,
                 max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps)
-        display_results(brain_agent, method_used, returns_list_res, window_success_res, steps_counter_list_res)
+        if display_learning_results:
+            display_results(brain_agent, method_used, returns_list_res, window_success_res, steps_counter_list_res)
 
     if flag_testing:
-        max_nb_episodes_testing = 5
+        max_nb_steps_testing = 50
+        nb_tests = 10
         sleep_time_between_steps = 0.5  # slow to see the steps
         if flag_tkinter:
-            env.after(100, test_agent, flag_tkinter, brain_agent, method_used, max_nb_episodes_testing,
+            env.after(100, test_agent, flag_tkinter, brain_agent, nb_tests, max_nb_steps_testing,
                       sleep_time_between_steps)
             env.mainloop()
         else:
-            test_agent()
+            test_agent(flag_tkinter, brain_agent, nb_tests, max_nb_steps_testing, sleep_time_between_steps)

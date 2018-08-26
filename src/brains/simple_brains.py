@@ -173,31 +173,32 @@ class RL(object):
             new_row = pd.Series(new_data, index=self.q_table.columns)
             self.q_table = self.q_table.append(new_row, ignore_index=True)
 
-    def load_q_table(self):
+    def load_q_table(self, file_path="q_table"):
         """
         at the start, load a q-table
         working with h5, csv and pickle
         :return: -
         """
         try:
-            filename = "q_table"
             # from csv
-            self.q_table = pd.read_csv(filename + ".csv", sep='\t', encoding='utf-8')
+            # self.q_table = pd.read_csv(file_path + ".csv", sep='\t', encoding='utf-8')
             # print(self.q_table)
 
             # from pickle
-            self.q_table = pd.read_pickle(filename + '.pkl')
+            self.q_table = pd.read_pickle(file_path + '.pkl')
             # print(self.q_table)
 
             # from h5
-            self.q_table = pd.read_hdf(filename + '.h5', 'q_table')
+            # self.q_table = pd.read_hdf(file_path + '.h5', 'q_table')
             # store = pd.HDFStore('q_table_BU.h5')
             # self.q_table = store['q_table']
             # store.close()
             # print(self.q_table)
+            return True
 
         except Exception as e:
             print(e)
+        return False
 
     def save_q_table(self, save_directory):
         """
