@@ -73,7 +73,6 @@ import numpy as np  # but trying to avoid using it (np.array cannot be converted
 #     import Tkinter as tk
 # else:
 import tkinter as tk
-import random
 from utils.logger import Logger
 
 UNIT = 20   # pixels per grid cell
@@ -340,12 +339,16 @@ class Road(tk.Tk, object):  # if tk is supported
 
         return process_state(self.initial_state), self.masking_function()
 
-    def transition(self, action):
+    def transition(self, action, velocity=None):
         """
         update velocity in state according to the desired command
         :param action: desired action
+        :param velocity: [optional]
         :return:
         """
+        if velocity is None:
+            velocity = self.state_ego_velocity
+
         delta_velocity = 0
 
         # print("current velocity: %s" % self.state_ego_velocity)
@@ -361,7 +364,7 @@ class Road(tk.Tk, object):  # if tk is supported
             delta_velocity = -2
         # print("new velocity: %s" % self.state_ego_velocity)
 
-        return self.state_ego_velocity + delta_velocity
+        return velocity + delta_velocity
 
     def step(self, action):
         """
@@ -504,18 +507,26 @@ class Road(tk.Tk, object):  # if tk is supported
 
         return self.reward, termination_flag
 
-    def masking_function(self):
+    def masking_function(self, state=None):
         """
         hard constraints
         using the state (position, velocity)
+
+        :param state: [optional]
         :return: masked_actions_list (a sub_list from self.action_list)
         """
+
+        if state is None:
+            velocity = None
+        else:
+            velocity = state[1]
+
         masked_actions_list = []
 
         # check if maximum / minimum speed has been reached
         for action_candidate in self.actions_list:
             # simulation for each action
-            velocity_candidate = self.transition(action_candidate)
+            velocity_candidate = self.transition(action_candidate, velocity)
             # print(velocity_candidate)
             if velocity_candidate > self.max_velocity_1:
                 # print("hard _ constraint : to fast")
@@ -526,12 +537,21 @@ class Road(tk.Tk, object):  # if tk is supported
 
         # checking there are still possibilities left:
         if masked_actions_list == self.actions_list:
-            print("velocity %s and position %s" % (self.state_ego_velocity, self.state_ego_position))
+            print("WARNING - velocity %s and position %s" % (self.state_ego_velocity, self.state_ego_position))
             message = "No possible_action found! in masking_function() - a = {} - p = {} - po= {} - v = {}".format(
                 self.previous_action, self.state_ego_position, self.state_obstacle_position, self.state_ego_velocity)
             self.logger.log(message, 4)
 
         return masked_actions_list
+
+    def move_to_state(self, state):
+        """
+        for model-based DP
+        :return:
+        """
+        self.state_ego_position = state[0]
+        self.state_ego_velocity = state[1]
+        pass
 
     def render(self, sleep_time):
         """

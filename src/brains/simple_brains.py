@@ -3,35 +3,41 @@ This part of code defines the brain of the agent.
 - decisions are made here
 - the q-table is updated here
 
-Three TD-based model-free control algorithms inherit from the parent Agent. Only the learn() method differs:
--Q-learning
--SARSA
--SARSA-lambda
+The parent Agent is a abstract class:
+- learn() method is a virtual method (to be defined)
+- q_table is store
+- Tabular representation of the discrete (action/state) pairs and the associated q-value:
 
-TD-based = Temporal Difference = all make Sample Back-Up (as opposed to DP = dynamic programming)
+Inherited classes are:
+-- One Monte-Carlo control algorithms
+    - q_table is a defaultdict
+-- Four TD-based model-free control algorithms
+    - q_table is a pandas DataFrame
+    - Only the learn() method differs:
+        - Q-learning (= max-SARSA)
+        - SARSA
+        - SARSA-lambda
+        - expected-SARSA
 
-On-policy SARSA learns action values relative to the policy it follows
+Note about terminology:
+ - TD-based = Temporal Difference = all make Sample Back-Up (as opposed to DP = dynamic programming)
+
+ - On-policy SARSA learns action values relative to the policy it follows
 While off-policy Q-Learning does it relative to the greedy policy.
 |             | SARSA | Q-learning |
 |:-----------:|:-----:|:----------:|
 | Choosing a_ |   π   |      π     |
 | Updating Q  |   π   |      μ     |
 
-In other words, Q-learning is trying to evaluate π while following another policy μ, so it's an off-policy algorithm.
+ - In other words, Q-learning is trying to evaluate π while following another policy μ, so it's an off-policy algorithm.
+    - Q-Learning tends to converge a little slower, but has the capability to continue learning while changing policies.
+    - Also, Q-Learning is not guaranteed to converge when combined with linear approximation.
 
-Q-Learning tends to converge a little slower, but has the capability to continue learning while changing policies.
-Also, Q-Learning is not guaranteed to converge when combined with linear approximation.
-
-All are model-free
-- Ask yourself this question:
-- After learning, can the agent make predictions about next state and reward before it takes each action?
-    -- If it can, then it’s a model-based RL algorithm.
-    -- If it cannot, it’s a model-free algorithm.
-
-Tabular representation of the discrete (action/state) pairs and the associated q-value:
-- I use pd.DataFrame
-- one could use collections.defaultdict for structure as well
-- np.array should be possible as well
+ - All are model-free
+    - Ask yourself this question:
+    - After learning, can the agent make predictions about next state and reward before it takes each action?
+        -- If it can, then it’s a model-based RL algorithm.
+        -- If it cannot, it’s a model-free algorithm.
 
 Structure of the object named "q_table":
 [id][-------------------------actions---------------------------] [--state features--]
@@ -41,26 +47,23 @@ Structure of the object named "q_table":
 2       0.396   0.000000       0.0000   0.000000        0.000000       4.0       2.0
 3       2.178   0.000000       0.0000   0.000000        0.000000       6.0       2.0
 
-To Do:
+# ToDo:
 - try approximation function (Fixed Sparse Representations), (Incremental Feature Dependency Discovery)
 - decay learning rate
 - expand the state space - add changing pedestrian position
+- make the initial state random
 """
 
 import numpy as np
 import pickle
+from copy import copy
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import random
 from abc import ABC, abstractmethod
 import os
-from sklearn.linear_model import SGDRegressor
-from sklearn.neural_network import MLPRegressor
-import sklearn.pipeline
-import sklearn.preprocessing
 from collections import defaultdict
-from sklearn.kernel_approximation import RBFSampler
 plt.rcParams['figure.figsize'] = [20, 10]
 
 
@@ -95,8 +98,8 @@ class Agent(ABC):
         self.size_of_largest_element = 800
 
     def reset_q_table(self):
-        # ToDo: dtype=np.float32 not necessary. Try lower precision
         self.q_table = pd.DataFrame(columns=self.columns_q_table, dtype=np.float32)
+
         print("reset_q_table - self.q_table has shape = {}".format(self.q_table.shape))
 
     def choose_action(self, observation, masked_actions_list, greedy_epsilon):
@@ -158,11 +161,16 @@ class Agent(ABC):
         return action_to_do
 
     def compare_reference_value(self):
-        # ToDo: we know the value of the last-but one state at convergence: Q(s,a)=R(s,a).
+        """
+        we know the value of the last-but one state at convergence: Q(s,a)=R(s,a).
+        since if termination_flag: q_target = r (# goal state has no value)
+        :return: the value of a given (state, action) pair
+        """
         state = [16, 3]
+        action_id = 0  # "no change"
         self.check_state_exist(state)
         id_row_previous_state = self.get_id_row_state(state)
-        res = self.q_table.loc[id_row_previous_state, self.actions_list[0]]
+        res = self.q_table.loc[id_row_previous_state, self.actions_list[action_id]]
         # should be +40
         print("reference_value = {}".format(res))
         return res
@@ -190,7 +198,7 @@ class Agent(ABC):
                                                            state[1])].tolist()
 
         if not state_id_list_previous_state:
-            # ToDo: is zero-value initialization relevant?
+            # ToDo: is zero-value initialization relevant? It seems so, yes
             # append new state to q table: Q(a,s)=0 for each action a
             new_data = np.concatenate((np.array(len(self.actions_list)*[0]), np.array(state)), axis=0)
             # print("new_data to add %s" % new_data)
@@ -383,6 +391,8 @@ class SarsaTable(Agent):
     def learn(self, s, a, r, s_, a_, termination_flag, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.A
+            using the actual action a_ to evaluate Q(s_, a_) - SARSA is therefore said "on-policy"
+            q_expected = Q(s_, a_)
         :param s: previous state (list of int)
         :param a: action (str)
         :param r: reward (int)
@@ -411,14 +421,8 @@ class SarsaTable(Agent):
             q_target = r
         else:
             # next state is not terminal
-            # consider the value of the next state with the action a_
-            # using the actual action a_ to evaluate Q(s_, a_) - SARSA is therefore said "on-policy"
-            row = self.q_table.loc[id_row_next_state]
-            filtered_row = row.filter(self.actions_list)
-            q_max = max(filtered_row)
             q_expected = self.q_table.loc[id_row_next_state, a_]
             q_target = r + gamma * q_expected
-            # print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
 
         # update q-value - Delta is the TD-error
         self.q_table.loc[id_row_previous_state, a] += learning_rate * (q_target - q_predict)
@@ -432,6 +436,12 @@ class ExpectedSarsa(Agent):
     def learn(self, s, a, r, s_, termination_flag, greedy_epsilon, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.A
+            Use the expected q_value of the next state for q_expected (used to build q_target)
+            Expectation is w.r.t. e-greedy-policy!
+            e-greedy-policy is to take action = argmax(Q) with probability = 1-e
+            and a random choice with prob = e
+            hence q_expected = q_mean * e + q_max * (1-e)
+
         :param s: previous state (list of int)
         :param a: action (str)
         :param r: reward (int)
@@ -455,20 +465,28 @@ class ExpectedSarsa(Agent):
 
         # Check if new state is terminal
         if termination_flag:
-            # next state is terminal
-            # goal state has no value
+            # next state is terminal - goal state has no value
             q_target = r
-            # Trying to reduce chance of random action as we train the model.
+            # Trying to reduce chance of random action as we train the model
 
         else:
+            # next state is not terminal
             row = self.q_table.loc[id_row_next_state]
             filtered_row = row.filter(self.actions_list)
+            # print("filtered_row = \n{}".format(filtered_row))
+            # print("max(filtered_row) = \n{}".format(max(filtered_row)))
+            # print("sum(filtered_row) = \n{}".format(sum(filtered_row)))
+
             q_max = max(filtered_row)
-            q_expected = 0
-            for a in self.actions_list:
-                q_expected += filtered_row[a] * greedy_epsilon * 1 / len(self.actions_list)
-            q_expected += (1 - greedy_epsilon) * q_max
-            print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
+            # print("q_max = \n{}".format(q_max))
+
+            q_mean = 0
+            if len(filtered_row):
+                q_mean = sum(filtered_row)/len(filtered_row)
+            # print("q_mean = \n{}".format(q_mean))
+
+            q_expected = (1 - greedy_epsilon) * q_max + greedy_epsilon * q_mean
+            # print("q_expected = \n{}".format(q_expected))
 
             q_target = r + gamma * q_expected
 
@@ -540,7 +558,7 @@ class SarsaLambdaTable(Agent):
 
         # !!!!!!!!!
         # backward view, eligibility trace.
-        self.lambda_ = trace_decay
+        self.lambda_trace_decay = trace_decay
         # same dimension as the Q-table: it counts how many times the state has been visited
         self.eligibility_trace = self.q_table.copy()
 
@@ -557,7 +575,7 @@ class SarsaLambdaTable(Agent):
         :param state:
         :return: -
         """
-        # try to find the index of the state
+        # try to find the index of the state - same as for the parent Class
         state_id_list_previous_state = self.q_table.index[(self.q_table[self.state_features_list[0]] == state[0]) &
                                                           (self.q_table[self.state_features_list[1]] ==
                                                            state[1])].tolist()
@@ -567,9 +585,11 @@ class SarsaLambdaTable(Agent):
             new_data = np.concatenate((np.array(len(self.actions_list) * [0]), np.array(state)), axis=0)
             # print("new_data to add %s" % new_data)
             new_row = pd.Series(new_data, index=self.q_table.columns)
+
+            # add new row in q_table
             self.q_table = self.q_table.append(new_row, ignore_index=True)
 
-            # also update eligibility trace
+            # also add it to the eligibility trace
             self.eligibility_trace = self.eligibility_trace.append(new_row, ignore_index=True)
 
     def learn(self, s, a, r, s_, a_, termination_flag, gamma, learning_rate):
@@ -606,291 +626,31 @@ class SarsaLambdaTable(Agent):
             # next state is not terminal
             # consider the value of the next state with the action a_
             # using the actual action a_ to evaluate Q(s_, a_) - SARSA is therefore said "on-policy"
-            q_target = r + gamma * self.q_table.loc[id_row_next_state, a_]
+            q_expected = self.q_table.loc[id_row_next_state, a_]
+            q_target = r + gamma * q_expected
 
-        # TD-error (is it the so called?)
+        # TD-error
         error = q_target - q_predict
+        # sarsa would have just done:
+        # self.q_table.loc[id_row_previous_state, a] += learning_rate * (q_target - q_predict)
 
         # increasing the importance factor for the visited state-action pair. Two methods:
         # Method 1: accumulating trace (not quite stable)
         # self.eligibility_trace.loc[id_row_previous_state, a] += 1
 
         # Method 2: replacing trace (normalization) - if I visit a state more than once, it still stays at 1, not more
-        self.eligibility_trace.loc[id_row_previous_state, :] *= 0
         self.eligibility_trace.loc[id_row_previous_state, a] = 1
 
-        # Q update - most state will not be considered
+        # q_table update - most state will not be considered
+        # ToDo: it is not necessary to consider all the states. Just those encountered during the episode
         # The importance factor (=eligibility_trace) says how important is to travel by this state to get the return
         self.q_table[self.actions_list] += learning_rate * error * self.eligibility_trace[self.actions_list]
 
+        # print("self.q_table[self.actions_list] = \n{}".format(self.q_table.to_string()))
+        # print("self.eligibility_trace[self.actions_list] = \n{}".format(self.eligibility_trace.to_string()))
+
         # decay eligibility trace after update (before the next step)
-        self.eligibility_trace *= gamma*self.lambda_
-
-
-# off-policy q-learning with Q-table Approximation
-class QLearningApproximation(Agent):
-    """
-    Not finish!
-    ToDo: complete it
-    SGD is sensitive to feature scaling just like batch GD. Hence using StandardScaler.
-    Scaling on the state before applying a featurizer
-    Then two possible estimators:
-     - linear regression with SGD
-      - MLP
-    """
-    def __init__(self, actions, state, load_q_table=False,
-                 regressor="linearSGD"):
-        super(QLearningApproximation, self).__init__(actions, state, load_q_table)
-
-        # hand-crafted: list all possible (pos, vel) pairs
-        self.sample_states = [[position, velocity] for position in range(20) for velocity in range(6)]
-        # print("sample_states = %s" % self.sample_states)
-
-        self.with_feature = True
-
-        if self.with_feature:
-            # Feature Preprocessing: Normalize to zero mean and unit variance
-            # We use a few samples from the observation space to do this
-            observation_examples = np.array([self.sample_state() for _ in range(10000)])
-
-            # Transform the data such that its distribution will have a mean value 0 and standard deviation of 1
-            #  __init__ of the scaler
-            scaler = sklearn.preprocessing.StandardScaler()
-
-            # Compute the mean and std to be used for later scaling
-            # Train the transformer object so it knows what means and variances to use
-            scaler.fit(observation_examples)
-            # print("mean = %s (should be [9.5, 2.5])" % scaler.mean_)
-            # print("std = %s (should be [33.25, 2.9166])" % scaler.var_)
-
-            # Manually set scaling parameters
-            scaler.mean_ = [9.5, 2.5]
-            scaler.var_ = [399/12, 35/12]  # variance of [0, 1, ..., N] = (N^2 - 1)/12
-            # print("mean = %s (should be [9.5, 2.5])" % scaler.mean_)
-            # print("std = %s (should be [33.25, 2.9166])" % scaler.var_)
-
-            # Used to convert a state to a featurized representation - size = features!!
-            # We use RBF kernels with different variances to cover different parts of the space
-            # FeatureUnion = Concatenates results of multiple transformer objects (RBFsampler here)
-            # -> useful to combine several feature extraction mechanisms into a single transformer
-
-            # The RBFSampler constructs an approximate mapping for the radial basis function kernel,
-            # also known as Random Kitchen Sinks
-            # Approximates feature map of an RBF kernel by Monte Carlo approximation of its Fourier transform
-            # Pipeline = to build a composite estimator, as a chain of transforms and estimators
-            featurizer = sklearn.pipeline.FeatureUnion([
-                # List of transformer objects to be applied to the data: rbf1, rbf2, rbf3, rbf4
-                ("rbf1", RBFSampler(  # RBFSampler is a transformer
-                    gamma=5.0,  # Parameter of RBF kernel: exp(-gamma * x^2)
-                    n_components=100)  # Number of Monte Carlo samples per original feature.
-                    # Equals the dimensionality of the computed feature space.
-                 ),
-                ("rbf2", RBFSampler(gamma=2.0, n_components=100)),
-                ("rbf3", RBFSampler(gamma=1.0, n_components=100)),
-                ("rbf4", RBFSampler(gamma=0.5, n_components=100))]
-            )
-
-            # Perform standardization by centering and scaling
-            scaled_observations = scaler.transform(observation_examples)
-            # Used sampled observations to  fit transformers
-            featurizer.fit(scaled_observations)
-
-            self.scaler = scaler
-            self.featurizer = featurizer
-
-        # list of models (one per action)
-        self.models = []
-
-        for _ in range(len(actions)):
-            if regressor == "linearSGD":
-                # instanciate a linear regression with SGD
-                clf = SGDRegressor(
-                    loss='squared_loss',
-                    penalty='l2',
-                    learning_rate="constant"
-                )
-
-            elif regressor == "MLP":
-                # instanciate a Multi-layer Perceptron regressor
-                clf = MLPRegressor(
-                    alpha=0.001,  # L2 penalty (regularization term) parameter
-                    hidden_layer_sizes=(10, 10),  # The ith element represents the nb of neurons in the ith hidden layer
-                    max_iter=50000,
-                    activation='relu',
-                    # verbose='True',  # Whether to print progress messages to stdout
-                    learning_rate='adaptive'
-                )
-
-            # bit of hack to initialize each model
-            sample_state = [0, 1]  # this is not really random
-            if self.with_feature:
-                features = [self.featurize(sample_state)]
-            else:
-                features = [sample_state]
-
-            target = [0]
-            # clf.n_iter = np.ceil(10 ** 6 / len(features))  # rule of thumb for the number of passes over the training
-            # set to get convergence
-
-            # First operation of fitting linear model to the action "Non-change" with SGD
-            # Actually do the fit AKA execute the gradient descent by calling a method of our SGDRegressor object.
-            clf.partial_fit(features, target)
-
-            self.models.append(clf)
-
-    def sample_state(self):
-        """
-        sample among all possible states of the environment
-        :return: on sample
-        """
-        sample = random.choice(self.sample_states)
-        return sample
-
-    def featurize(self, state):
-        """
-        scale the state and convert it to features
-        :param state: state ([pos, velocity]) to be featurized
-        :return: features representation
-        """
-        scaled = self.scaler.transform([state])
-        featurized = self.featurizer.transform(scaled)
-        return featurized[0]
-
-    def predict(self, state):
-        """
-        For each action, compute the predicted q(a,s) values for the given state
-        :param state: the current state
-        :return: list of q(state) for each action
-        """
-
-        if self.with_feature:
-            features = [self.featurize(state)]
-        else:
-            features = [state]
-
-        # print("state for prediction: %s " % state)
-        # print("predictions for the state %s = %s " % (state, [model.predict(features)[0] for model in self.models]))
-        return [model.predict(features)[0] for model in self.models]
-
-    def update(self, state, action, target):
-        """
-        Updates the estimator parameters for a given state and action towards the target q_target
-        (One model is attached to an action and gives q(s) for each possible state s)
-        Treat RL as supervised learning problem:
-            with the MC- or TD-target as the label and the current state/action as the input.
-        :param state: previous state (no matter of the next_state - it is included in the target)
-        :param action: the action that was taken
-        :param target: the q_target (it includes the reward and the next state)
-        :return: -
-        """
-        if self.with_feature:
-            features = [self.featurize(state)]
-        else:
-            features = [state]
-        target = [target]
-        # The 'models[action]' gives Q(action, s) for each state s
-        # This is q_predict
-        # Shape input: (n_samples, n_features)
-        # Shape output: (n_samples)
-        self.models[action].partial_fit(features, target)
-
-    def learn(self, s, a, r, s_, termination_flag, gamma, learning_rate):
-        """
-        update the q-table based on the observed experience S.A.R.S.
-        :param s: previous state (list of int)
-        :param a: action (str)
-        :param r: reward (int)
-        :param s_: new state (list of int)
-        :param termination_flag: (boolean)
-        :param gamma: [float between 0 and 1] discount factor
-        :param learning_rate: [float between 0 and 1] - learning rate
-        :return: -
-        """
-
-        # id_a = self.actions_list.index(a)
-        # q_predict_approximation = self.predict(s)
-        # print("q_predict_approximation = %s" % q_predict_approximation)
-        # print("q_predict_approximation for action '%s' = %s" % (a, q_predict_approximation[id_a]))
-
-        # Check if new state is terminal
-        if termination_flag:
-            # next state is terminal
-            # goal state has no value
-            q_target_approximation = r
-
-            # Trying to reduce chance of random action as we train the model.
-            # Updated epsilon
-            # self.epsilon = self.epsilon / (self.epsilon + 0.05)
-            # print("updated epsilon = %s" % self.epsilon)
-
-        else:
-            # next state is not terminal
-            # consider the best value of the next state
-            # using max to evaluate Q(s_, a_) - Q-learning is therefore said "off-policy"
-            q_target_approximation = r + gamma * np.max(self.predict(s_))
-
-        # update q-value following Q-learning - The TD-error is computed in the update() method
-        id_a = self.actions_list.index(a)
-        self.update(s, id_a, q_target_approximation)
-
-    def choose_action(self, observation, masked_actions_list, greedy_epsilon):
-        """
-        chose an action based on the policy of the q-table
-        with an e_greedy approach
-        :param observation: current state
-        :param masked_actions_list: forbidden actions
-        :param greedy_epsilon: probability of random choice for epsilon-greedy action selection
-        :return:
-        """
-        # print("state before choosing an action: %s " % observation)
-
-        # apply action masking
-        possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
-        if not possible_actions:
-            print("!!!!! No possible_action !!!!!")
-
-        # Epsilon-greedy action selection
-        if np.random.uniform() > greedy_epsilon:
-            # choose best action
-
-            actions_value = self.predict(observation)
-            ranked_id_actions_value = np.argsort(actions_value)[::-1]
-            possible_id = [self.actions_list.index(a) for a in possible_actions]
-            id_candidates = [index_action for index_action in ranked_id_actions_value if index_action in possible_id]
-            id_action_to_do = id_candidates[0]  # should add random in case of equal results?
-            action_to_do_approximation = self.actions_list[id_action_to_do]
-
-            # print("actions_value for that state = %s" % actions_value)
-            # print("np.argsort(actions_value) = %s" % np.argsort(actions_value))
-            # print("ranked_id_actions_value = %s" % ranked_id_actions_value)
-            # print("possible_actions = %s" % possible_actions)
-            # print("possible_id = %s" % possible_id)
-            # print("id_candidates = %s" % id_candidates)
-            # print("id_action_to_do = %s" % id_action_to_do)
-            # print("action_to_do_approximation = %s" % action_to_do_approximation)
-            # print("\tBEST action = %s " % action_to_do)
-
-        else:
-            # choose random action
-            action_to_do_approximation = np.random.choice(possible_actions)
-            # print("\t-- RANDOM action= %s " % action_to_do)
-
-        return action_to_do_approximation
-
-    def create_q_table(self):
-        """
-        use the function approximation to fill the table
-        :return: -
-        """
-        for position in range(20):
-            for velocity in range(6):
-                q_values_list = self.predict([position, velocity])
-                state_list = [position, velocity]
-                new_data = np.concatenate((np.array(q_values_list), np.array(state_list)), axis=0)
-                # print("new_data to add %s" % new_data)
-                new_row = pd.Series(new_data, index=self.q_table.columns)
-                self.q_table = self.q_table.append(new_row, ignore_index=True)
-        print(self.q_table.head())
+        self.eligibility_trace[self.actions_list] *= gamma * self.lambda_trace_decay
 
 
 # Monte Carlo Control
@@ -898,20 +658,17 @@ class MC(Agent):
     def __init__(self, actions, state, load_q_table=False):
         super(MC, self).__init__(actions, state, load_q_table)
         self.nA = len(actions)
-        # self.q_table = defaultdict(lambda: np.zeros(self.nA))
         self.policy = None
+        # self.q_table = defaultdict(lambda: np.zeros(self.nA))
 
     def compare_reference_value(self):
         # ToDo: we know the value of the last-but one state at convergence: Q(s,a)=R(s,a).
-        state = (18, 3)
-        action_id = 0  # no change
+        state = (16, 3)
+        action_id = 0  # "no change"
         res = self.q_table[state][action_id]
         # should be +40
         print("reference_value = {}".format(res))
         return res
-
-    def learn(self, *args):
-        pass
 
     def reset_q_table(self):
         # ToDo: dtype=np.float32 not necessary. Try lower precision
@@ -927,7 +684,7 @@ class MC(Agent):
         if np.random.uniform() > greedy_epsilon:
             # choose best action
 
-            state_action = self.q_table[observation]
+            state_action = copy(self.q_table[observation])
             # print("state_action = {}".format(state_action))
             # print("possible_actions = {}".format(possible_actions))
 
@@ -935,7 +692,7 @@ class MC(Agent):
             for action in self.actions_list:
                 if action not in possible_actions:
                     action_id = self.actions_list.index(action)
-                    state_action[action_id] = -np.inf
+                    state_action[action_id] = -np.inf  # using a copy
             # print("filtered state_action = {}".format(state_action))
 
             # make decision
@@ -951,7 +708,7 @@ class MC(Agent):
 
         return action_to_do
 
-    def update_q(self, episode, gamma, learning_rate):
+    def learn(self, episode, gamma, learning_rate):
         """ updates the action-value function estimate using the most recent episode """
         states, actions, rewards = zip(*episode)
         # print("states = {}".format(states))
@@ -983,7 +740,16 @@ class MC(Agent):
 
     def print_q_table(self):
         # sort series according to the position
-        print(self.q_table)
+        q_table_dict = dict(self.q_table)
+        q_table_pandas = pd.DataFrame(columns=self.columns_q_table, dtype=np.float32)
+        for state, q_values in q_table_dict.items():
+            new_data = np.concatenate((np.array(q_values), np.array(state)), axis=0)
+            # print("new_data to add %s" % new_data)
+            new_row = pd.Series(new_data, index=q_table_pandas.columns)
+            q_table_pandas = q_table_pandas.append(new_row, ignore_index=True)
+
+        q_table_pandas = q_table_pandas.sort_values(by=[self.state_features_list[0]])
+        print(q_table_pandas.to_string())
 
     def load_q_table(self, weight_file=None):
         """
@@ -1010,3 +776,175 @@ class MC(Agent):
         except Exception as e:
             print(e)
         return False
+
+
+# Model-based - to get the optimal values (to set the success_threshold)
+class DP(Agent):
+    def __init__(self, actions, state, env, gamma, load_q_table=False):
+        super(DP, self).__init__(actions, state, load_q_table)
+        self.env = env
+        self.nA = len(actions)
+        self.policy = None
+        self.n_position = 20
+        self.n_velocity = 6
+        self.gamma = gamma
+
+    def learn(self):
+        pass
+
+    def q_from_v(self, v_table):
+        # loop over all possible states (p, v)
+        q = np.ones((self.n_position, self.n_velocity, self.nA))
+        for p in range(self.n_position):
+        # for p in range(19, 20):
+        #     print("p = {}".format(p))
+            for v in range(self.n_velocity):
+            # for v in range(2, 3):
+            #     print("v = {}".format(v))
+                masked_actions_list = self.env.masking_function([p, v])
+                possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
+                # print("possible_actions = {}".format(possible_actions))
+
+                for action_id in range(self.nA):
+                    self.env.move_to_state([p, v])  # say the env to move on on state [p][v]
+                    action = self.actions_list[action_id]
+                    if action in possible_actions:
+                        # print(" -- ")
+                        # print(" {} taken in {}".format(action, [p, v]))
+                        next_observation, reward, termination_flag, _ = self.env.step(action)
+                        prob = 1  # deterministic environment
+                        if termination_flag:
+                            # print(" with termination_flag, Q = prob {} * reward {}".format(prob, reward))
+                            q[p][v][action_id] = prob * reward
+
+                        else:
+                            next_p = next_observation[0]
+                            next_v = next_observation[1]
+                            # print(" No termination_flag")
+                            q[p][v][action_id] = prob * (reward + self.gamma * v_table[next_p][next_v])
+
+                    else:
+                        # print(" {} cannot be taken in {}".format(action, [p, v]))
+                        q[p][v][action_id] = -np.inf  # masked action
+        return q
+
+    def policy_improvement(self, v_table):
+        policy = np.zeros([self.n_position, self.n_velocity, self.nA]) / self.nA
+        for p in range(self.n_position):
+            for v in range(self.n_velocity):
+                q = self.q_from_v(v_table)
+                # OPTION 1: construct a deterministic policy
+                # policy[p][v][np.argmax(q[p][v])] = 1  # make sure we have policy initialized with np.zeros()
+
+                # OPTION 2: construct a stochastic policy that puts equal probability on maximizing actions
+                best_a = np.argwhere(q[p][v] == np.max(q[p][v])).flatten()
+                policy[p][v] = np.sum([np.eye(self.nA)[i] for i in best_a], axis=0) / len(best_a)
+
+        return policy
+
+    def policy_evaluation(self, policy=None, theta=1e-6, max_counter=1e5):
+        """
+        # -26.40 = v_table[19, 2] with random policy
+        :param policy: policy[state] = policy[p][v] = probabilities (numpy array) of taking each of the actions
+        :param theta:
+        :param max_counter:
+        :return:
+        """
+        if policy is None:
+            policy = np.ones([self.n_position, self.n_velocity, self.nA]) / self.nA  # random_policy
+        # initialize arbitrarily
+        v_table = np.zeros((self.n_position, self.n_velocity))
+        counter = 0
+        while counter < max_counter:
+
+            counter += 1
+            if counter % 100 == 0:
+                print(" --- {} --- ".format(counter))
+            delta = 0
+            # loop over all possible states (p, v)
+            for p in range(self.n_position):
+            # for p in range(19, 20):
+            #     print("p = {}".format(p))
+                for v in range(self.n_velocity):
+                # for v in range(2, 3):
+                #     print("v = {}".format(v))
+
+                    v_state = 0
+                    masked_actions_list = self.env.masking_function([p, v])
+                    # print("masked_actions_list  = {}".format(masked_actions_list ))
+
+                    possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
+                    # prob = 1 / len(possible_actions)
+
+                    # policy[p][v] = [0.20 0.20 0.20 0.20 0.20]
+                    for action_id, action_prob in enumerate(policy[p][v]):
+                        self.env.move_to_state([p, v])  # say the env to move on on state [p][v]
+                        # print(" {} == {}".format([self.env.state_ego_position, self.env.state_ego_velocity], [p, v]))
+
+                        action = self.actions_list[action_id]
+                        if action in possible_actions:
+                            # print(" -- ")
+                            # print(" {} taken in {}".format(action, [p, v]))
+                            next_observation, reward, termination_flag, _ = self.env.step(action)
+                            prob = 1  # deterministic environment
+                            # print(" {}, {}, {} = results".format(next_observation, reward, termination_flag))
+                            next_p = next_observation[0]
+                            next_v = next_observation[1]
+                            # next_p = min(next_observation[0], self.n_position - 1)
+                            # next_v = min(next_observation[1], self.n_velocity - 1)
+                            # print(" {} = action_prob, prob = {}".format(action_prob, prob))
+
+                            if termination_flag:
+                                # print(" with termination_flag, V = action_prob {} * prob {} * reward {}".format(
+                                #     action_prob, prob, reward))
+                                v_state += action_prob * prob * reward
+                            else:
+                                v_state += action_prob * prob * (reward + self.gamma * v_table[next_p][next_v])
+                    delta = max(delta, np.abs(v_table[p][v] - v_state))
+                    v_table[p][v] = v_state
+                    # print("v_state = {}".format(v_state))
+
+            if delta < theta:
+                break
+        return v_table
+
+    def policy_iteration(self, theta=1e-8, max_counter=1e5):
+        policy = np.zeros([self.n_position, self.n_velocity, self.nA]) / self.nA
+        counter = 0
+        v_table = None
+        while counter < max_counter:
+            counter += 1
+            print(" - {} - ".format(counter))
+            v_table = self.policy_evaluation(policy, theta)
+            new_policy = self.policy_improvement(v_table)
+
+            # OPTION 1: stop if the policy is unchanged after an improvement step
+            if (new_policy == policy).all():
+                break
+
+            # OPTION 2: stop if the value function estimates for successive policies has converged
+            # if np.max(abs(policy_evaluation(env, policy) - policy_evaluation(env, new_policy))) < theta*1e2:
+            #    break;
+
+            policy = copy(new_policy)
+        return policy, v_table
+
+    def run_policy(self, policy, initial_state):
+        self.env.reset()
+        current_observation = initial_state
+        self.env.move_to_state(initial_state)  # say the env to move on on state [p][v]
+        return_of_episode = 0
+        done = False
+        while not done:
+            policy_for_this_state = policy[current_observation[0], current_observation[1]]
+            print("policy_for_this_state = {}".format(policy_for_this_state))
+            action_id = np.argmax(policy[current_observation[0], current_observation[1]])
+            action = self.actions_list[action_id]
+            print("action = {}".format(action))
+            next_observation, reward, termination_flag, _ = self.env.step(action)
+            print(" {}, {}, {} = results".format(next_observation, reward, termination_flag))
+
+            return_of_episode += reward
+            done = termination_flag
+
+        print("return_of_episode = {}".format(return_of_episode))

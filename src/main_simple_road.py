@@ -41,13 +41,16 @@ from brains.simple_brains import QLearningTable
 from brains.simple_brains import SarsaTable
 from brains.simple_brains import ExpectedSarsa
 from brains.simple_brains import SarsaLambdaTable
-from brains.simple_brains import QLearningApproximation
+from brains.simple_brains import DP
 from brains.simple_DQN import DeepQNetwork
+from brains.dqn_agent_banana import Agent
 from collections import deque
 import math
 from utils.logger import Logger
 
+seed = np.random.seed(0)
 plt.rcParams['figure.figsize'] = [20, 10]
+np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
 
 
 def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, eps_end, eps_decay,
@@ -143,8 +146,8 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
 
             # update the action-value function estimate using the episode
             # print("episode = {}".format(episode))
-            agent.compare_reference_value()
-            agent.update_q(episode, gamma, learning_rate)
+            # agent.compare_reference_value()
+            agent.learn(episode, gamma, learning_rate)
 
         else:  # TD
             # run episodes
@@ -160,7 +163,9 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                     return_of_episode += reward
                     if not termination_flag:  # if done
                         # Online-Policy: Choose an action At+1 following the same e-greedy policy based on current Q
-                        next_action = agent.choose_action(next_observation, masked_actions_list=[],
+                        # ToDo: here, we should read the masked_actions_list associated to the next_observation
+                        masked_actions_list = env.masking_function(next_observation)
+                        next_action = agent.choose_action(next_observation, masked_actions_list=masked_actions_list,
                                                           greedy_epsilon=greedy_epsilon)
 
                         # agent learn from this transition
@@ -178,7 +183,7 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                         returns_list.append(return_of_episode)
                         break
 
-                elif (method == "q") or (method == "expected_sarsa") or (method == "q_approximation"):
+                elif (method == "q") or (method == "expected_sarsa") or (method == "banana_dqn"):
                     current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
                     next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
                     return_of_episode += reward
@@ -188,15 +193,12 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                         agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
                                     gamma, learning_rate)
 
+                    elif method == "banana_dqn":
+                        agent.step(current_observation, current_action, reward, next_observation, termination_flag)
+
                     elif method == "expected_sarsa":
                         agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
                                     greedy_epsilon, gamma, learning_rate)
-
-                    elif method == "q_approximation":
-                        # Update the function approximator using our target
-                        # estimator.update(state, current_action, td_target)
-                        agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
-                                    gamma, learning_rate)
 
                     else:  # DQN
                         # New: store transition in memory - subsequently to be sampled from
@@ -207,7 +209,9 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                             # print('learning')
                             # pick up some transitions from the memory and learn from these samples
                             agent.learn()
+
                     current_observation = next_observation
+
                     if termination_flag:  # if done
                         step_counter = step_id
                         steps_counter_list.append(step_id)
@@ -238,7 +242,7 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
             time_intermediate = time.time()
             print('\n --- Episode={} ---\n eps={}\n Average Score in returns_window = {:.2f} \n duration={:.2f}'.format(
                 episode_id, greedy_epsilon, np.mean(returns_window), time_intermediate - time_start))
-            agent.print_q_table()
+            # agent.print_q_table()
 
         if episode_id % 20 == 0:
             print('Episode {} / {}. Eps = {}. Total_steps = {}. Return = {}. Max return = {}, Top 10 = {}'.format(
@@ -344,10 +348,6 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
     if display_flag:
         plt.show()
 
-    # Plot policy
-    if method_used_to_plot == "q_approximation":
-        agent.create_q_table()
-
     agent.print_q_table()
     if method_used_to_plot not in ["DQN", "mc_control"]:
         agent.plot_q_table(folder, display_flag)
@@ -432,17 +432,23 @@ if __name__ == "__main__":
     with open('environments/simple_road_env_configuration.json', 'w') as outfile:
         json.dump(dict_configuration, outfile)
 
-    # Difference possible algorithm to update the state-action table:
-    # Monte-Carlo
-    # method_used = "mc_control"
+    # Different possible algorithms to update the state-action table:
+    # -1- Monte-Carlo  # working
+    # method_used = "mc_control"  # definitely the faster [in term of duration not nb_episodes]. below 1 min
 
-    # Temporal-Difference
+    # -2- Temporal-Difference  # all are working - "q" performs the best
     # method_used = "q"
-    # method_used = "q_approximation"
-    method_used = "sarsa"
+    # method_used = "sarsa"
     # method_used = "expected_sarsa"
-    # method_used = "sarsa_lambda"
+    # method_used = "sarsa_lambda"  # worked with trace_decay=0.3
+
+    # -3- deep TD
     # method_used = "DQN"
+    # method_used = "banana_dqn"  # model is correct - ToDo: hyper-parameter tuning
+
+    # -4- Model-Based Dynamic Programming
+    # Dynamic programming assumes that the agent has full knowledge of the MDP
+    method_used = "DP"
 
     # Instanciate an Agent
     brain_agent = None
@@ -450,17 +456,13 @@ if __name__ == "__main__":
         brain_agent = MC(actions=actions_list, state=state_features_list, load_q_table=False)
     elif method_used == "q":
         brain_agent = QLearningTable(actions=actions_list, state=state_features_list, load_q_table=False)
-    elif method_used == "q_approximation":
-        # regressor = "linearSGD"
-        regressor = "MLP"
-        brain_agent = QLearningApproximation(actions=actions_list, state=state_features_list, load_q_table=False,
-                                             regressor=regressor)
     elif method_used == "sarsa":
         brain_agent = SarsaTable(actions=actions_list, state=state_features_list, load_q_table=False)
     elif method_used == "expected_sarsa":
         brain_agent = ExpectedSarsa(actions=actions_list, state=state_features_list, load_q_table=False)
     elif method_used == "sarsa_lambda":
-        brain_agent = SarsaLambdaTable(actions=actions_list, state=state_features_list, load_q_table=False)
+        brain_agent = SarsaLambdaTable(actions=actions_list, state=state_features_list, load_q_table=False,
+                                       trace_decay=0.3)
     elif method_used == "DQN":
         grand_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         results_dir = os.path.abspath(grand_parent_dir + "/results/simple_road/")
@@ -476,10 +478,29 @@ if __name__ == "__main__":
                                    # saver_dir='/tmp/tensorflow_logs/RL/saver/'
                                    saver_dir=None
                                    )
+    elif method_used == "banana_dqn":
+        brain_agent = Agent(actions=actions_list, state=state_features_list)
+
+    elif method_used == "DP":
+        brain_agent = DP(actions=actions_list, state=state_features_list, env=env, gamma=1)
+        v_table = brain_agent.policy_evaluation()
+        q_table = brain_agent.q_from_v(v_table)
+        policy_improved = brain_agent.policy_improvement(v_table)
+        opt_policy, opt_v_table = brain_agent.policy_iteration()
+        opt_q_table = brain_agent.q_from_v(opt_v_table)
+
+        print(v_table[19][3])
+        print(v_table)
+        print(q_table)
+        print(policy_improved)
+        print(opt_policy)
+        print(opt_v_table)
+        print(opt_q_table)
+        brain_agent.run_policy(opt_policy, [0, 3])
 
     # Training and/or Testing
     flag_training_once = False
-    flag_testing = True
+    flag_testing = False
     flag_training_hyper_parameter_tuning = False  # Tkinter is not used when tuning hyper-parameters
     display_learning_results = False  # only used for training_once
 
@@ -507,7 +528,7 @@ if __name__ == "__main__":
     # success conditions
     window_success_res = 100
     threshold_success_training = 17
-    info_training = {}
+    dict_info_training = {}
     # 22.97 for self.reward = 1 + self.reward / max(self.rewards_dict.values())
     # q_max = 9.23562904132267 for expected_sarsa
 
@@ -540,14 +561,14 @@ if __name__ == "__main__":
             # after = Register an alarm callback that is called after a given time.
             # give results as reference
             returns_list_res, steps_counter_list_res = [], []
-            info_training = {}
+            dict_info_training = {}
 
             train_agent(flag_tkinter, brain_agent, *hyper_parameters,
                         window_success_res, threshold_success_training, returns_list_res,
-                        steps_counter_list_res, info_training,
+                        steps_counter_list_res, dict_info_training,
                         max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps_learning,
                         folder_name_training)
-            logger.log(info_training, 1)
+            logger.log(dict_info_training, 1)
 
             try:
                 display_results(brain_agent, method_used, returns_list_res, window_success_res,
@@ -579,7 +600,7 @@ if __name__ == "__main__":
             env.after(100, train_agent, flag_tkinter, brain_agent,
                       *hyper_parameters,
                       window_success_res, threshold_success_training, returns_list_res,
-                      steps_counter_list_res, info_training,
+                      steps_counter_list_res, dict_info_training,
                       max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps_learning)
             env.mainloop()
             print("returns_list_res = {}, window_success_res = {}, steps_counter_list_res = {}".format(
@@ -587,7 +608,7 @@ if __name__ == "__main__":
         else:
             train_agent(flag_tkinter, brain_agent, *hyper_parameters,
                         window_success_res, threshold_success_training, returns_list_res,
-                        steps_counter_list_res, info_training,
+                        steps_counter_list_res, dict_info_training,
                         max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps_learning)
         try:
             display_results(brain_agent, method_used, returns_list_res, window_success_res,
