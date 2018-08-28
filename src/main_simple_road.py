@@ -36,6 +36,7 @@ import pandas as pd
 import time  # to time the learning process
 import json  # to get the configuration of the environment
 from environments.simple_road_env import Road
+from brains.simple_brains import MC
 from brains.simple_brains import QLearningTable
 from brains.simple_brains import SarsaTable
 from brains.simple_brains import ExpectedSarsa
@@ -44,30 +45,35 @@ from brains.simple_brains import QLearningApproximation
 from brains.simple_DQN import DeepQNetwork
 from collections import deque
 import math
+from utils.logger import Logger
 
 plt.rcParams['figure.figsize'] = [20, 10]
 
 
-def train_agent(using_tkinter, agent, method, window_success, threshold_success, returns_list, steps_counter_list,
-                eps_start=0.9, eps_end=0.01, eps_decay=0.935,
-                max_nb_episodes=2000, max_nb_steps=25, sleep_time=0.001):
-    # def train_agent(using_tkinter, agent, method, eps_start=0.9, eps_end=0.01, eps_decay=0.935,
-    #                 max_nb_episodes=2000, max_nb_steps=25, sleep_time=0.001):
+def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, eps_end, eps_decay,
+                window_success, threshold_success, returns_list, steps_counter_list, info_training,
+                max_nb_episodes, max_nb_steps, sleep_time, folder_name=""):
     """
 
     :param using_tkinter: [bool] to display the environment, or not
     :param agent: [brain object]
     :param method: [string] value-based learning method - either sarsa or q-learning
+    :param gamma: [float between 0 and 1] discount factor
+    If gamma is closer to one, the agent will consider future rewards with greater weight,
+    willing to delay the reward.
+    :param learning_rate: [float between 0 and 1] - Non-constant learning rate must be used?
+    :param eps_start: [float]
+    :param eps_end: [float]
+    :param eps_decay: [float]
     :param window_success: [int]
     :param threshold_success: [float] to solve the env, = average score over the last x scores, where x = window_success
     :param returns_list: [list of float]
     :param steps_counter_list: [list of int]
-    :param eps_start: [float]
-    :param eps_end: [float]
-    :param eps_decay: [float]
+    :param info_training: [dict]
     :param max_nb_episodes: [int] limit of training episodes
     :param max_nb_steps: [int] maximum number of timesteps per episode
     :param sleep_time: [int] sleep_time between two steps [ms]
+    :param folder_name: [string] to distinguish between runs during hyper-parameter tuning
     :return: [list] returns_list - to be displayed
     """
     returns_window = deque(maxlen=window_success)  # last x scores, where x = window_success
@@ -82,18 +88,19 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
 
     # track maximum return
     max_return = -math.inf  # to be set low enough (setting max_nb_steps * max_cost_per_step should do it)
+    max_window = -np.inf
 
     # initialize updated variable
-    episode_id = 0
     current_action = None
     next_observation = None
 
     # measure the running time
     time_start = time.time()
-
+    nb_episodes_seen = max_nb_episodes
     #
-    while episode_id < max_nb_episodes:  # limit the number of episodes during training
-        episode_id = episode_id + 1
+    for episode_id in range(max_nb_episodes):  # limit the number of episodes during training
+        # while episode_id < max_nb_episodes
+        # episode_id = episode_id + 1
 
         # reset metrics
         step_counter = max_nb_steps  # length of episode
@@ -102,6 +109,7 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
         rewards = []
         actions = []
         changes_in_state = 0
+        reward = 0
         next_action = None
 
         # reset the environment for a new episode
@@ -114,80 +122,110 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
                 # for sarsa_lambda - initial all zero eligibility trace
                 agent.reset_eligibility_trace()
 
-        # run episodes
-        for step_id in range(max_nb_steps):
-            # ToDo: how to penalize the agent that does not terminate the episode?
-
-            # fresh env
-            if using_tkinter:
-                env.render(sleep_time)
-
-            if (method == "sarsa") or (method == "sarsa_lambda"):
-                next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
-                return_of_episode += reward
-                if not termination_flag:  # if done
-                    # Online-Policy: Choose an action At+1 following the same e-greedy policy based on current Q
-                    next_action = agent.choose_action(next_observation, masked_actions_list=[],
-                                                      greedy_epsilon=greedy_epsilon)
-
-                    # agent learn from this transition
-                    agent.learn(current_observation, current_action, reward, next_observation, next_action,
-                                termination_flag)
-                    current_observation = next_observation
-                    current_action = next_action
-
-                if termination_flag:  # if done
-                    agent.learn(current_observation, current_action, reward, next_observation, next_action,
-                                termination_flag)
-                    # ToDo: check it ignore next_observation and next_action
-                    step_counter = step_id
-                    steps_counter_list.append(step_id)
-                    returns_list.append(return_of_episode)
-                    break
-
-            else:
-                current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
+        if method_used == "mc_control":
+            # generate an episode by following epsilon-greedy policy
+            episode = []
+            current_observation, _ = env.reset()
+            for step_id in range(max_nb_steps):  # while True
+                current_action = agent.choose_action(tuple(current_observation), masked_actions_list, greedy_epsilon)
                 next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
                 return_of_episode += reward
 
-                if method == "q":
-                    # agent learn from this transition
-                    agent.learn(current_observation, current_action, reward, next_observation, termination_flag)
-
-                elif method == "expected_sarsa":
-                    agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
-                                greedy_epsilon)
-
-                elif method == "q_approximation":
-                    # Update the function approximator using our target
-                    # estimator.update(state, current_action, td_target)
-                    agent.learn(current_observation, current_action, reward, next_observation, termination_flag)
-
-                else:  # DQN
-                    # New: store transition in memory - subsequently to be sampled from
-                    agent.store_transition(current_observation, current_action, reward, next_observation)
-
-                    # if the number of steps is larger than a threshold, start learn ()
-                    if (step_id > 5) and (step_id % 5 == 0):  # for 1 to T
-                        # print('learning')
-                        # pick up some transitions from the memory and learn from these samples
-                        agent.learn()
+                # a tuple is hashable and can be used in defaultdict
+                episode.append((tuple(current_observation), current_action, reward))
                 current_observation = next_observation
-                if termination_flag:  # if done
+
+                if termination_flag:
                     step_counter = step_id
                     steps_counter_list.append(step_id)
                     returns_list.append(return_of_episode)
                     break
 
-            # log
-            trajectory.append(current_observation)
-            trajectory.append(current_action)
+            # update the action-value function estimate using the episode
+            # print("episode = {}".format(episode))
+            agent.compare_reference_value()
+            agent.update_q(episode, gamma, learning_rate)
 
-            # monitor actions, states and rewards are not constant
-            rewards.append(reward)
-            actions.append(current_action)
-            if not (next_observation[0] == current_observation[0] and next_observation[1] == current_observation[1]):
-                changes_in_state = changes_in_state + 1
+        else:  # TD
+            # run episodes
+            for step_id in range(max_nb_steps):
+                # ToDo: how to penalize the agent that does not terminate the episode?
+
+                # fresh env
+                if using_tkinter:
+                    env.render(sleep_time)
+
+                if (method == "sarsa") or (method == "sarsa_lambda"):
+                    next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
+                    return_of_episode += reward
+                    if not termination_flag:  # if done
+                        # Online-Policy: Choose an action At+1 following the same e-greedy policy based on current Q
+                        next_action = agent.choose_action(next_observation, masked_actions_list=[],
+                                                          greedy_epsilon=greedy_epsilon)
+
+                        # agent learn from this transition
+                        agent.learn(current_observation, current_action, reward, next_observation, next_action,
+                                    termination_flag, gamma, learning_rate)
+                        current_observation = next_observation
+                        current_action = next_action
+
+                    if termination_flag:  # if done
+                        agent.learn(current_observation, current_action, reward, next_observation, next_action,
+                                    termination_flag, gamma, learning_rate)
+                        # ToDo: check it ignore next_observation and next_action
+                        step_counter = step_id
+                        steps_counter_list.append(step_id)
+                        returns_list.append(return_of_episode)
+                        break
+
+                elif (method == "q") or (method == "expected_sarsa") or (method == "q_approximation"):
+                    current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
+                    next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
+                    return_of_episode += reward
+
+                    if method == "q":
+                        # agent learn from this transition
+                        agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
+                                    gamma, learning_rate)
+
+                    elif method == "expected_sarsa":
+                        agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
+                                    greedy_epsilon, gamma, learning_rate)
+
+                    elif method == "q_approximation":
+                        # Update the function approximator using our target
+                        # estimator.update(state, current_action, td_target)
+                        agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
+                                    gamma, learning_rate)
+
+                    else:  # DQN
+                        # New: store transition in memory - subsequently to be sampled from
+                        agent.store_transition(current_observation, current_action, reward, next_observation)
+
+                        # if the number of steps is larger than a threshold, start learn ()
+                        if (step_id > 5) and (step_id % 5 == 0):  # for 1 to T
+                            # print('learning')
+                            # pick up some transitions from the memory and learn from these samples
+                            agent.learn()
+                    current_observation = next_observation
+                    if termination_flag:  # if done
+                        step_counter = step_id
+                        steps_counter_list.append(step_id)
+                        returns_list.append(return_of_episode)
+                        # agent.compare_reference_value()
+
+                        break
+
+                # log
+                trajectory.append(current_observation)
+                trajectory.append(current_action)
+
+                # monitor actions, states and rewards are not constant
+                rewards.append(reward)
+                actions.append(current_action)
+                if not (next_observation[0] == current_observation[0]
+                        and next_observation[1] == current_observation[1]):
+                    changes_in_state = changes_in_state + 1
 
         # At this point, the episode is terminated
         # decay epsilon
@@ -200,6 +238,7 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
             time_intermediate = time.time()
             print('\n --- Episode={} ---\n eps={}\n Average Score in returns_window = {:.2f} \n duration={:.2f}'.format(
                 episode_id, greedy_epsilon, np.mean(returns_window), time_intermediate - time_start))
+            agent.print_q_table()
 
         if episode_id % 20 == 0:
             print('Episode {} / {}. Eps = {}. Total_steps = {}. Return = {}. Max return = {}, Top 10 = {}'.format(
@@ -214,17 +253,30 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
             best_trajectories_list.append(trajectory)
             max_return = return_of_episode
 
+        if np.mean(returns_window) > max_window:
+            max_window = np.mean(returns_window)
+
         # test success
         if np.mean(returns_window) >= threshold_success:
             time_stop = time.time()
             print('\nEnvironment solved in {:d} episodes!\tAverage Score: {:.2f}, duration={:.2f} [s]'.format(
                 episode_id - window_success, np.mean(returns_window), time_stop - time_start))
+            info_training["nb_episodes_to_solve"] = episode_id - window_success
+            nb_episodes_seen = episode_id
             break
 
-    # ToDo: save weights
+    time_stop = time.time()
+    info_training["duration"] = int(time_stop - time_start)
+    info_training["nb_episodes_seen"] = nb_episodes_seen
+    info_training["final_epsilon"] = greedy_epsilon
+    info_training["max_window"] = max_window
+    info_training["reference_values"] = agent.compare_reference_value()
+
     # where to save the weights
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    folder = os.path.join(parent_dir, "results/simple_road/")
+    folder = os.path.join(parent_dir, "results/simple_road/" + folder_name)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
     agent.save_q_table(folder)
 
     print('End of training')
@@ -239,13 +291,27 @@ def train_agent(using_tkinter, agent, method, window_success, threshold_success,
 
 
 def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_window, threshold_success,
-                    steps_counter_list_to_plot):
-
+                    steps_counter_list_to_plot, display_flag=True, folder_name=""):
+    """
+    Use to SAVE + plot (optional)
+    :param agent:
+    :param method_used_to_plot:
+    :param returns_to_plot:
+    :param smoothing_window:
+    :param threshold_success:
+    :param steps_counter_list_to_plot:
+    :param display_flag:
+    :param folder_name:
+    :return:
+    """
     # where to save the plots
     parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    folder = os.path.join(parent_dir, "results/simple_road/")
+    folder = os.path.join(parent_dir, "results/simple_road/" + folder_name)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 
     # plot step_counter for each episode
+    plt.figure()
     plt.grid(True)
     plt.xlabel('Episode')
     plt.title("Episode Step_counts over Time (Smoothed over window size {})".format(smoothing_window))
@@ -255,8 +321,10 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
     plt.plot(steps_counter_list_to_plot, linewidth=0.5)
     plt.plot(steps_smoothed, linewidth=2.0)
     plt.savefig(folder + "step_counter.png")
-    plt.show()
+    if display_flag:
+        plt.show()
 
+    plt.figure()
     plt.grid(True)
     returns_smoothed = pd.Series(returns_to_plot).rolling(smoothing_window, min_periods=smoothing_window).mean()
     plt.plot(returns_to_plot, linewidth=0.5)
@@ -266,35 +334,41 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
     plt.ylabel("Episode Return(Smoothed)")
     plt.title("Episode Return over Time (Smoothed over window size {})".format(smoothing_window))
     plt.savefig(folder + "return.png")
-    plt.show()
+    if display_flag:
+        plt.show()
 
     # bins = range(min(returns_to_plot), max(returns_to_plot) + 1, 1)
+    plt.figure()
     plt.hist(returns_to_plot, normed=True, bins=100)
     plt.ylabel('reward distribution')
-    plt.show()
+    if display_flag:
+        plt.show()
 
     # Plot policy
     if method_used_to_plot == "q_approximation":
         agent.create_q_table()
-    if method_used_to_plot != "DQN":
-        agent.print_q_table()
-        agent.plot_q_table(folder)
-        agent.plot_optimal_actions_at_each_position(folder)
+
+    agent.print_q_table()
+    if method_used_to_plot not in ["DQN", "mc_control"]:
+        agent.plot_q_table(folder, display_flag)
+        agent.plot_optimal_actions_at_each_position(folder, display_flag)
 
 
-def test_agent(using_tkinter_test, agent, nb_episodes=1, max_nb_steps=20, sleep_time=0.001):
+def test_agent(using_tkinter_test, agent, returns_list, nb_episodes=1, max_nb_steps=20, sleep_time=0.001,
+               weight_file_name="q_table.pkl"):
     """
     load weights and show one run
     :param using_tkinter_test: [bool]
     :param agent: [brain object]
+    :param returns_list: [float list] - argument passed by reference
     :param nb_episodes: [int]
     :param max_nb_steps: [int]
     :param sleep_time: [float]
+    :param weight_file_name: [string]
     :return: -
     """
-    returns_list = []
     grand_parent_dir_test = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    weight_file = os.path.abspath(grand_parent_dir_test + "/results/simple_road/q_table")
+    weight_file = os.path.abspath(grand_parent_dir_test + "/results/simple_road/" + weight_file_name)
     if agent.load_q_table(weight_file):
 
         for episode_id in range(nb_episodes):
@@ -358,17 +432,23 @@ if __name__ == "__main__":
     with open('environments/simple_road_env_configuration.json', 'w') as outfile:
         json.dump(dict_configuration, outfile)
 
-    # Three possible algorithm to learn the state-action table:
-    method_used = "q"
+    # Difference possible algorithm to update the state-action table:
+    # Monte-Carlo
+    # method_used = "mc_control"
+
+    # Temporal-Difference
+    # method_used = "q"
     # method_used = "q_approximation"
-    # method_used = "sarsa"
+    method_used = "sarsa"
     # method_used = "expected_sarsa"
     # method_used = "sarsa_lambda"
     # method_used = "DQN"
 
-    # Instanciate an Agent - the brain
+    # Instanciate an Agent
     brain_agent = None
-    if method_used == "q":
+    if method_used == "mc_control":
+        brain_agent = MC(actions=actions_list, state=state_features_list, load_q_table=False)
+    elif method_used == "q":
         brain_agent = QLearningTable(actions=actions_list, state=state_features_list, load_q_table=False)
     elif method_used == "q_approximation":
         # regressor = "linearSGD"
@@ -396,56 +476,133 @@ if __name__ == "__main__":
                                    # saver_dir='/tmp/tensorflow_logs/RL/saver/'
                                    saver_dir=None
                                    )
-    flag_training = True
-    flag_testing = False
 
-    if flag_training:
-        display_learning_results = True
-        # training parameters
-        eps_start_learning = 1.0
-        eps_end_training = 0.01
-        # 0.99907 for 5000 at 0.01/1.0
-        eps_decay_training = 0.99907  # reach eps_end at episode_id = log10(eps_end/eps_start) / log10(eps_decay)
-        # to reach eps_end at episode episode_id, eps_decay = (eps_end / eps_start) ** (1/episode_id)
-        max_nb_episodes_training = 5000
-        max_nb_steps_training = 25
-        sleep_time_between_steps = 0.0005
+    # Training and/or Testing
+    flag_training_once = False
+    flag_testing = True
+    flag_training_hyper_parameter_tuning = False  # Tkinter is not used when tuning hyper-parameters
+    display_learning_results = False  # only used for training_once
 
-        # success conditions
-        window_success_res = 100
-        threshold_success_training = 13
-        # 22.97 for self.reward = 1 + self.reward / max(self.rewards_dict.values())
-        # q_max = 9.23562904132267 for expected_sarsa
+    # for testing
+    max_nb_steps_testing = 50
+    nb_tests = 10
+    sleep_time_between_steps_testing = 0.5  # slow to see the steps
 
-        # after = Register an alarm callback that is called after a given time.
-        # give results as reference
+    # for learning
+    # hyper-parameters
+    gamma_learning = 0.99
+    learning_rate_learning = 0.02
+    eps_start_learning = 1.0
+    eps_end_training = 0.01
+    # reach eps_end at episode_id = log10(eps_end/eps_start) / log10(eps_decay)
+    # 0.99907 for 5000 at 0.01/1.0
+    eps_decay_training = 0.998466
+    # 0.99907  # for getting to 0.01 in ~5000 episodes
+
+    # to reach eps_end at episode episode_id, eps_decay = (eps_end / eps_start) ** (1/episode_id)
+    max_nb_episodes_training = 7000
+    max_nb_steps_training = 25
+    sleep_time_between_steps_learning = 0.0005
+
+    # success conditions
+    window_success_res = 100
+    threshold_success_training = 17
+    info_training = {}
+    # 22.97 for self.reward = 1 + self.reward / max(self.rewards_dict.values())
+    # q_max = 9.23562904132267 for expected_sarsa
+
+    if flag_training_hyper_parameter_tuning:
+
+        # No tkinter used
+        learning_rate_list = [0.003, 0.01, 0.03, 0.1, 0.3, 1]
+
+        gamma_learning_list = [0.1, 0.3, 0.5, 0.7, 0.9, 0.95, 0.99, 1]
+        nb_episodes_to_plateau_list = [300, 500, 800, 1000, 3000, 5000]
+        # [0.954992586021, 0.9847666521101, 0.995405417351, 0.998466120868, 0.9995395890030, 0.9999846495505]
+        eps_decay_list = [(eps_end_training / eps_start_learning) ** (1/nb) for nb in nb_episodes_to_plateau_list]
+
+        for i, param in enumerate(eps_decay_list):
+            brain_agent.reset_q_table()  # re-initialize the model!!
+
+            folder_name_training = str(i) + '/'
+            logger_name = str(i) + '.log'
+            logger = Logger(folder_name_training, logger_name, 0)
+
+            hyper_parameters = (
+                method_used,
+                gamma_learning,
+                learning_rate_learning,
+                eps_start_learning,
+                eps_end_training,
+                param  # decay
+            )
+            logger.log(str(hyper_parameters), 1)
+            # after = Register an alarm callback that is called after a given time.
+            # give results as reference
+            returns_list_res, steps_counter_list_res = [], []
+            info_training = {}
+
+            train_agent(flag_tkinter, brain_agent, *hyper_parameters,
+                        window_success_res, threshold_success_training, returns_list_res,
+                        steps_counter_list_res, info_training,
+                        max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps_learning,
+                        folder_name_training)
+            logger.log(info_training, 1)
+
+            try:
+                display_results(brain_agent, method_used, returns_list_res, window_success_res,
+                                threshold_success_training, steps_counter_list_res,
+                                display_flag=False, folder_name=folder_name_training)
+            except Exception as e:
+                print('Exception = {}'.format(e))
+
+            # testing
+            returns_list_testing = []  # passed as a reference
+            test_agent(flag_tkinter, brain_agent, returns_list_testing, nb_tests, max_nb_steps_testing,
+                       sleep_time_between_steps_learning, folder_name_training + "q_table.pkl")
+            logger.log(returns_list_testing, 1)
+
+    if flag_training_once:
+        hyper_parameters = (
+            method_used,
+            gamma_learning,
+            learning_rate_learning,
+            eps_start_learning,
+            eps_end_training,
+            eps_decay_training
+        )
+        print("hyper_parameters = {}".format(hyper_parameters))
         returns_list_res, steps_counter_list_res = [], []
         if flag_tkinter:
             # after(self, time [ms] before execution of func(*args), func=None, *args):
             # !! callback function. No return value can be read
-            env.after(100, train_agent, flag_tkinter, brain_agent, method_used,
+            env.after(100, train_agent, flag_tkinter, brain_agent,
+                      *hyper_parameters,
                       window_success_res, threshold_success_training, returns_list_res,
-                      steps_counter_list_res, eps_start_learning, eps_end_training, eps_decay_training,
-                      max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps)
+                      steps_counter_list_res, info_training,
+                      max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps_learning)
             env.mainloop()
             print("returns_list_res = {}, window_success_res = {}, steps_counter_list_res = {}".format(
                 returns_list_res, window_success_res, steps_counter_list_res))
         else:
-            train_agent(flag_tkinter, brain_agent, method_used, window_success_res, threshold_success_training,
-                        returns_list_res, steps_counter_list_res, eps_start_learning, eps_end_training,
-                        eps_decay_training, max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps)
-        if display_learning_results:
-            # ToDo: plot horizontal threshold_success_training
-            display_results(brain_agent, method_used, returns_list_res, window_success_res, threshold_success_training,
-                            steps_counter_list_res)
+            train_agent(flag_tkinter, brain_agent, *hyper_parameters,
+                        window_success_res, threshold_success_training, returns_list_res,
+                        steps_counter_list_res, info_training,
+                        max_nb_episodes_training, max_nb_steps_training, sleep_time_between_steps_learning)
+        try:
+            display_results(brain_agent, method_used, returns_list_res, window_success_res,
+                            threshold_success_training, steps_counter_list_res,
+                            display_flag=display_learning_results)
+        except Exception as e:
+            print('Exception = {}'.format(e))
+        print("hyper_parameters = {}".format(hyper_parameters))
 
     if flag_testing:
-        max_nb_steps_testing = 50
-        nb_tests = 10
-        sleep_time_between_steps = 0.5  # slow to see the steps
+        returns_list_testing = []
         if flag_tkinter:
-            env.after(100, test_agent, flag_tkinter, brain_agent, nb_tests, max_nb_steps_testing,
-                      sleep_time_between_steps)
+            env.after(100, test_agent, flag_tkinter, brain_agent, returns_list_testing, nb_tests, max_nb_steps_testing,
+                      sleep_time_between_steps_testing)
             env.mainloop()
         else:
-            test_agent(flag_tkinter, brain_agent, nb_tests, max_nb_steps_testing, sleep_time_between_steps)
+            test_agent(flag_tkinter, brain_agent, returns_list_testing, nb_tests, max_nb_steps_testing,
+                       sleep_time_between_steps_testing)

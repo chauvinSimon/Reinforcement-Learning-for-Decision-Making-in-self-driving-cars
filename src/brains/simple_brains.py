@@ -48,6 +48,7 @@ To Do:
 """
 
 import numpy as np
+import pickle
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -58,48 +59,45 @@ from sklearn.linear_model import SGDRegressor
 from sklearn.neural_network import MLPRegressor
 import sklearn.pipeline
 import sklearn.preprocessing
+from collections import defaultdict
 from sklearn.kernel_approximation import RBFSampler
 plt.rcParams['figure.figsize'] = [20, 10]
 
 
 class Agent(ABC):
-    def __init__(self, actions_names, state_features, learning_rate=0.9, gamma=0.9, load_q_table=False):
+    def __init__(self, actions_names, state_features, load_q_table=False):
         """
         Parent abstract class (the method learn() is to be defined)
 
         :param actions_names: [string] list of possible actions
         :param state_features: [string] list of features forming the state
-        :param learning_rate: [int between 0 and 1] - Non-constant learning rate must be used?
-        :param gamma: [int between 0 and 1] discount factor
-        If gamma is closer to one, the agent will consider future rewards with greater weight,
-        willing to delay the reward.
         :param load_q_table: [bool] flag to load the q-values DataFrame from file
         """
         # environment information
         self.actions_list = actions_names  # string!
         self.state_features_list = state_features  # string!
-        columns_q_table = actions_names + state_features  # string!
-
-        # hyper-parameters
-        self.lr = learning_rate  # alpha
-        self.gamma = gamma
-        # epsilon scheduling is defined in the main
+        self.columns_q_table = actions_names + state_features  # string!
 
         # structure to store the q-values of the (state/action) pairs
+        self.q_table = None
         if load_q_table:
             if self.load_q_table():
                 print("Load success")
             else:
-                # ToDo: dtype=np.float32 not necessary. Try lower precision
-                self.q_table = pd.DataFrame(columns=columns_q_table, dtype=np.float32)
+                self.reset_q_table()
         else:
-            self.q_table = pd.DataFrame(columns=columns_q_table, dtype=np.float32)
+            self.reset_q_table()
         # print(self.q_table.columns)
 
         # settings for plotting
         colours_list = ['green', 'red', 'blue', 'yellow', 'orange']
         self.action_to_color = dict(zip(self.actions_list, colours_list))
         self.size_of_largest_element = 800
+
+    def reset_q_table(self):
+        # ToDo: dtype=np.float32 not necessary. Try lower precision
+        self.q_table = pd.DataFrame(columns=self.columns_q_table, dtype=np.float32)
+        print("reset_q_table - self.q_table has shape = {}".format(self.q_table.shape))
 
     def choose_action(self, observation, masked_actions_list, greedy_epsilon):
         """
@@ -128,7 +126,7 @@ class Agent(ABC):
                 (self.q_table[self.state_features_list[0]] == observation[0])
                 & (self.q_table[self.state_features_list[1]] == observation[1])
                 # & (self.q_table[self.state_features_list[2]] == observation[2])
-            ]
+                ]
 
             # only consider the action names - remove the state information
             state_action = state_action.filter(self.actions_list, axis=1)
@@ -151,13 +149,23 @@ class Agent(ABC):
             # get first element of the pandas series
             action_to_do = action.iloc[0]
             # print("\tBEST action = %s " % action_to_do)
-        
+
         else:
             # choose random action
             action_to_do = np.random.choice(possible_actions)
             # print("\t-- RANDOM action= %s " % action_to_do)
 
         return action_to_do
+
+    def compare_reference_value(self):
+        # ToDo: we know the value of the last-but one state at convergence: Q(s,a)=R(s,a).
+        state = [16, 3]
+        self.check_state_exist(state)
+        id_row_previous_state = self.get_id_row_state(state)
+        res = self.q_table.loc[id_row_previous_state, self.actions_list[0]]
+        # should be +40
+        print("reference_value = {}".format(res))
+        return res
 
     @abstractmethod
     def learn(self, *args):
@@ -205,7 +213,7 @@ class Agent(ABC):
         # print("filtered_row = \n{}".format(filtered_row))
         return id_row_state
 
-    def load_q_table(self, file_path="q_table"):
+    def load_q_table(self, weight_file=None):
         """
         open_model
         working with h5, csv or pickle format
@@ -213,9 +221,12 @@ class Agent(ABC):
         """
         try:
             # from pickle
-            grand_grand_parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            results_dir = os.path.abspath(grand_grand_parent_dir + "/results/simple_road/" + file_path + '.pkl')
-            self.q_table = pd.read_pickle(results_dir)
+            if weight_file is None:
+                grand_grand_parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+                results_dir = os.path.abspath(grand_grand_parent_dir + "/results/simple_road/" + "q_table" + '.pkl')
+                self.q_table = pd.read_pickle(results_dir)
+            else:
+                self.q_table = pd.read_pickle(weight_file)
             return True
 
         except Exception as e:
@@ -248,10 +259,10 @@ class Agent(ABC):
         """
         # sort series according to the position
         self.q_table = self.q_table.sort_values(by=[self.state_features_list[0]])
-        print(self.q_table.head())
-        # print(self.q_table.to_string())
+        # print(self.q_table.head())
+        print(self.q_table.to_string())
 
-    def plot_q_table(self, folder):
+    def plot_q_table(self, folder, display_flag):
         """
         plot the q(a,s) for each s
 
@@ -311,9 +322,10 @@ class Agent(ABC):
         plt.grid(True, alpha=0.2)
         ax1.set_facecolor('silver')
         plt.savefig(folder + "plot_q_table.png")
-        plt.show()
+        if display_flag:
+            plt.show()
 
-    def plot_optimal_actions_at_each_position(self, folder):
+    def plot_optimal_actions_at_each_position(self, folder, display_flag):
         """
         plotting the best action to take for each state
         also quantify the relative confidence
@@ -358,17 +370,17 @@ class Agent(ABC):
         plt.grid(True, alpha=0.2)
         ax2.set_facecolor('silver')
         plt.savefig(folder + "plot_optimal_actions_at_each_position.png")
-
-        plt.show()
+        if display_flag:
+            plt.show()
 
 
 # on-policy: Unlike Q learning which is a offline updating method, Sarsa is updating while in the current trajectory
 # SARSA can only learn from itself (from the experience and transition it met in the past)
 class SarsaTable(Agent):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
-        super(SarsaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
+    def __init__(self, actions, state, load_q_table=False):
+        super(SarsaTable, self).__init__(actions, state, load_q_table)
 
-    def learn(self, s, a, r, s_, a_, termination_flag):
+    def learn(self, s, a, r, s_, a_, termination_flag, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.A
         :param s: previous state (list of int)
@@ -377,6 +389,8 @@ class SarsaTable(Agent):
         :param s_: new state (list of int)
         :param termination_flag: (boolean)
         :param a_: new action (str)
+        :param gamma: [float between 0 and 1] discount factor
+        :param learning_rate: [float between 0 and 1] - learning rate
         :return: -
         """
         self.check_state_exist(s_)
@@ -403,19 +417,19 @@ class SarsaTable(Agent):
             filtered_row = row.filter(self.actions_list)
             q_max = max(filtered_row)
             q_expected = self.q_table.loc[id_row_next_state, a_]
-            q_target = r + self.gamma * q_expected
-            print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
+            q_target = r + gamma * q_expected
+            # print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
 
         # update q-value - Delta is the TD-error
-        self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
+        self.q_table.loc[id_row_previous_state, a] += learning_rate * (q_target - q_predict)
 
 
 # to compute the q_predict, make the average of q-values based on probabilities of each action
 class ExpectedSarsa(Agent):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
-        super(ExpectedSarsa, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
+    def __init__(self, actions, state, load_q_table=False):
+        super(ExpectedSarsa, self).__init__(actions, state, load_q_table)
 
-    def learn(self, s, a, r, s_, termination_flag, greedy_epsilon):
+    def learn(self, s, a, r, s_, termination_flag, greedy_epsilon, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.A
         :param s: previous state (list of int)
@@ -424,6 +438,8 @@ class ExpectedSarsa(Agent):
         :param s_: new state (list of int)
         :param termination_flag: (boolean)
         :param greedy_epsilon: [float]
+        :param gamma: [float between 0 and 1] discount factor
+        :param learning_rate: [float between 0 and 1] - learning rate
         :return: -
         """
         self.check_state_exist(s_)
@@ -454,18 +470,18 @@ class ExpectedSarsa(Agent):
             q_expected += (1 - greedy_epsilon) * q_max
             print("q_expected/q_max = {} q_expected = {} q_max = {}".format(q_expected/q_max, q_expected, q_max))
 
-            q_target = r + self.gamma * q_expected
+            q_target = r + gamma * q_expected
 
         # update q-value following Q-learning - Delta is the TD-error
-        self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
+        self.q_table.loc[id_row_previous_state, a] += learning_rate * (q_target - q_predict)
 
 
 # off-policy. Q-learning = sarsa_max
 class QLearningTable(Agent):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False):
-        super(QLearningTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
+    def __init__(self, actions, state, load_q_table=False):
+        super(QLearningTable, self).__init__(actions, state, load_q_table)
 
-    def learn(self, s, a, r, s_, termination_flag):
+    def learn(self, s, a, r, s_, termination_flag, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.
         :param s: previous state (list of int)
@@ -473,6 +489,8 @@ class QLearningTable(Agent):
         :param r: reward (int)
         :param s_: new state (list of int)
         :param termination_flag: (boolean)
+        :param gamma: [float between 0 and 1] discount factor
+        :param learning_rate: [float between 0 and 1] - learning rate
         :return: -
         """
         self.check_state_exist(s_)
@@ -503,11 +521,11 @@ class QLearningTable(Agent):
             # print("filtered_row = \n{}".format(filtered_row))
             # print("max(filtered_row) = \n{}".format(max(filtered_row)))
             q_expected = max(filtered_row)
-            q_target = r + self.gamma * q_expected
-            # q_target = r + self.gamma * self.q_table.loc[id_row_next_state, :].max()
+            q_target = r + gamma * q_expected
+            # q_target = r + gamma * self.q_table.loc[id_row_next_state, :].max()
 
         # update q-value following Q-learning - Delta is the TD-error
-        self.q_table.loc[id_row_previous_state, a] += self.lr * (q_target - q_predict)
+        self.q_table.loc[id_row_previous_state, a] += learning_rate * (q_target - q_predict)
 
 
 # Sarsa Lambda can learn for
@@ -516,9 +534,9 @@ class QLearningTable(Agent):
 # - in between (Lambda in [0,1])
 # Idea is to update and give reward to all the steps that contribute to the end return
 class SarsaLambdaTable(Agent):
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False,
+    def __init__(self, actions, state, load_q_table=False,
                  trace_decay=0.9):
-        super(SarsaLambdaTable, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
+        super(SarsaLambdaTable, self).__init__(actions, state, load_q_table)
 
         # !!!!!!!!!
         # backward view, eligibility trace.
@@ -554,7 +572,7 @@ class SarsaLambdaTable(Agent):
             # also update eligibility trace
             self.eligibility_trace = self.eligibility_trace.append(new_row, ignore_index=True)
 
-    def learn(self, s, a, r, s_, a_, termination_flag):
+    def learn(self, s, a, r, s_, a_, termination_flag, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.A
         update the eligibility_trace too
@@ -564,6 +582,8 @@ class SarsaLambdaTable(Agent):
         :param s_: new state (list of int)
         :param termination_flag: (boolean)
         :param a_: new action (str)
+        :param gamma: [float between 0 and 1] discount factor
+        :param learning_rate: [float between 0 and 1] - learning rate
         :return: -
         """
         self.check_state_exist(s_)
@@ -586,7 +606,7 @@ class SarsaLambdaTable(Agent):
             # next state is not terminal
             # consider the value of the next state with the action a_
             # using the actual action a_ to evaluate Q(s_, a_) - SARSA is therefore said "on-policy"
-            q_target = r + self.gamma * self.q_table.loc[id_row_next_state, a_]
+            q_target = r + gamma * self.q_table.loc[id_row_next_state, a_]
 
         # TD-error (is it the so called?)
         error = q_target - q_predict
@@ -601,10 +621,10 @@ class SarsaLambdaTable(Agent):
 
         # Q update - most state will not be considered
         # The importance factor (=eligibility_trace) says how important is to travel by this state to get the return
-        self.q_table[self.actions_list] += self.lr * error * self.eligibility_trace[self.actions_list]
+        self.q_table[self.actions_list] += learning_rate * error * self.eligibility_trace[self.actions_list]
 
         # decay eligibility trace after update (before the next step)
-        self.eligibility_trace *= self.gamma*self.lambda_
+        self.eligibility_trace *= gamma*self.lambda_
 
 
 # off-policy q-learning with Q-table Approximation
@@ -618,9 +638,9 @@ class QLearningApproximation(Agent):
      - linear regression with SGD
       - MLP
     """
-    def __init__(self, actions, state, learning_rate=0.9, reward_decay=0.9, load_q_table=False,
+    def __init__(self, actions, state, load_q_table=False,
                  regressor="linearSGD"):
-        super(QLearningApproximation, self).__init__(actions, state, learning_rate, reward_decay, load_q_table)
+        super(QLearningApproximation, self).__init__(actions, state, load_q_table)
 
         # hand-crafted: list all possible (pos, vel) pairs
         self.sample_states = [[position, velocity] for position in range(20) for velocity in range(6)]
@@ -774,7 +794,7 @@ class QLearningApproximation(Agent):
         # Shape output: (n_samples)
         self.models[action].partial_fit(features, target)
 
-    def learn(self, s, a, r, s_, termination_flag):
+    def learn(self, s, a, r, s_, termination_flag, gamma, learning_rate):
         """
         update the q-table based on the observed experience S.A.R.S.
         :param s: previous state (list of int)
@@ -782,6 +802,8 @@ class QLearningApproximation(Agent):
         :param r: reward (int)
         :param s_: new state (list of int)
         :param termination_flag: (boolean)
+        :param gamma: [float between 0 and 1] discount factor
+        :param learning_rate: [float between 0 and 1] - learning rate
         :return: -
         """
 
@@ -805,7 +827,7 @@ class QLearningApproximation(Agent):
             # next state is not terminal
             # consider the best value of the next state
             # using max to evaluate Q(s_, a_) - Q-learning is therefore said "off-policy"
-            q_target_approximation = r + self.gamma * np.max(self.predict(s_))
+            q_target_approximation = r + gamma * np.max(self.predict(s_))
 
         # update q-value following Q-learning - The TD-error is computed in the update() method
         id_a = self.actions_list.index(a)
@@ -869,3 +891,122 @@ class QLearningApproximation(Agent):
                 new_row = pd.Series(new_data, index=self.q_table.columns)
                 self.q_table = self.q_table.append(new_row, ignore_index=True)
         print(self.q_table.head())
+
+
+# Monte Carlo Control
+class MC(Agent):
+    def __init__(self, actions, state, load_q_table=False):
+        super(MC, self).__init__(actions, state, load_q_table)
+        self.nA = len(actions)
+        # self.q_table = defaultdict(lambda: np.zeros(self.nA))
+        self.policy = None
+
+    def compare_reference_value(self):
+        # ToDo: we know the value of the last-but one state at convergence: Q(s,a)=R(s,a).
+        state = (18, 3)
+        action_id = 0  # no change
+        res = self.q_table[state][action_id]
+        # should be +40
+        print("reference_value = {}".format(res))
+        return res
+
+    def learn(self, *args):
+        pass
+
+    def reset_q_table(self):
+        # ToDo: dtype=np.float32 not necessary. Try lower precision
+        self.q_table = defaultdict(lambda: np.zeros(self.nA))
+
+    def choose_action(self, observation, masked_actions_list, greedy_epsilon):
+        observation = tuple(observation)
+
+        # apply action masking
+        possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
+
+        # Epsilon-greedy action selection
+        if np.random.uniform() > greedy_epsilon:
+            # choose best action
+
+            state_action = self.q_table[observation]
+            # print("state_action = {}".format(state_action))
+            # print("possible_actions = {}".format(possible_actions))
+
+            # restrict to allowed actions
+            for action in self.actions_list:
+                if action not in possible_actions:
+                    action_id = self.actions_list.index(action)
+                    state_action[action_id] = -np.inf
+            # print("filtered state_action = {}".format(state_action))
+
+            # make decision
+            if np.all(np.isneginf([state_action])):
+                action_id = random.choice(possible_actions)
+                print('random action sampled among allowed actions')
+            else:
+                action_id = np.argmax(state_action)
+                # Return index of first occurrence of maximum over requested axis (with shuffle)
+            action_to_do = self.actions_list[action_id]
+        else:
+            action_to_do = np.random.choice(possible_actions)
+
+        return action_to_do
+
+    def update_q(self, episode, gamma, learning_rate):
+        """ updates the action-value function estimate using the most recent episode """
+        states, actions, rewards = zip(*episode)
+        # print("states = {}".format(states))
+        # print("rewards = {}".format(rewards))
+        # print("actions = {}".format(actions))
+        # prepare for discounting
+        discounts = np.array([gamma ** i for i in range(len(rewards) + 1)])
+        for i, state in enumerate(states):
+            action_id = self.actions_list.index(actions[i])
+            # print(actions[i])
+            # print(action_id)
+            old_q = self.q_table[state][action_id]
+            self.q_table[state][action_id] = old_q + learning_rate * (sum(rewards[i:] * discounts[:-(1 + i)]) - old_q)
+
+    def save_q_table(self, save_directory):
+        """
+        """
+        filename = "q_table"
+        try:
+            # to pickle
+            output = open(save_directory + filename + ".pkl", 'wb')
+
+            pickle.dump(dict(self.q_table), output)
+            output.close()
+            print("Saved as " + filename + ".pkl")
+
+        except Exception as e:
+            print(e)
+
+    def print_q_table(self):
+        # sort series according to the position
+        print(self.q_table)
+
+    def load_q_table(self, weight_file=None):
+        """
+        open_model
+        working with h5, csv or pickle format
+        :return: -
+        """
+        try:
+            # from pickle
+            print(weight_file)
+            loaded_dict = pd.read_pickle(weight_file)
+            print(type(loaded_dict))
+
+            self.q_table = defaultdict(lambda: np.zeros(self.nA))
+
+            for state, value in loaded_dict.items():
+                for i, q in enumerate(value):
+                    # print("state = {}".format(state))
+                    # print("i = {}".format(i))
+                    # print("q = {}".format(q))
+                    self.q_table[state][i] = q
+            return True
+
+        except Exception as e:
+            print(e)
+        return False

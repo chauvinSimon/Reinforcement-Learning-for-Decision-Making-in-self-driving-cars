@@ -249,12 +249,12 @@ class Road(tk.Tk, object):  # if tk is supported
 
     @staticmethod
     def sample_position_obstacle():
-        # fix_position_obstacle = 12
-        # return fix_position_obstacle
+        fix_position_obstacle = 12
+        return fix_position_obstacle
         # random_position_obstacle = random.randint(1, MAZE_W)
-        random_position_obstacle = random.randint(MAZE_W//2 - 1, MAZE_W//2 + 2)
+        # random_position_obstacle = random.randint(MAZE_W//2 - 1, MAZE_W//2 + 2)
         # print("{} = random_position_obstacle".format(random_position_obstacle))
-        return random_position_obstacle
+        # return random_position_obstacle
 
     def build_road(self):
         """
