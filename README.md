@@ -223,7 +223,6 @@ I implemented the **action_masking** mechanism described in [Simon Chauvin, "Hie
 It helps reducing exploration and ensures safety.
 This example of q-values for ```position = 1```, when driving at **maximal speed = 5**, the agent is prevented from ```speed_up``` actions (```q = -inf```).
 ```
-[ --- actions --- ]
    no_change  speed_up  speed_up_up  slow_down  slow_down_down
 0  -3.444510 -0.892310    -0.493900       -inf            -inf
 1   1.107690  1.506100     1.486100  -5.444510            -inf
@@ -239,7 +238,7 @@ In the **Bellman equation**, if the episode is terminated, then ```q_target = r`
 - Therefore, in the Optimal Value Function, the q-values of states that are just about to terminate is equal to the reward associated to the transition caused by the action.
 - I find it is very usesul to monitor of such q-values in the learning process
 
-| ![Monitoring of the convergence of a given q-value](pictures_for_readme/ref_q_value.png"Monitoring of the convergence of a given q-value")  | 
+| ![Monitoring of the convergence of a given q-value](pictures_for_readme/ref_q_value.png "Monitoring of the convergence of a given q-value")  | 
 |:--:| 
 | *Monitoring of the convergence of a given q-value* |
 
@@ -265,11 +264,11 @@ Plots of the final Q-table
  - [Normalized Q-values](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/simple_road/plot_q_table.png)
  - [Best Q-values for each state](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results\simple_road\plot_q_table.png)
 
-| ![Best actions learnt by model-free agent after 4000 episodes](pictures_for_readme/plot_optimal_actions_at_each_position.png"Best actions learnt by model-free agent after 4000 episodes")  | 
+| ![Best actions learnt by model-free agent after 4000 episodes](pictures_for_readme/plot_optimal_actions_at_each_position.png "Best actions learnt by model-free agent after 4000 episodes")  | 
 |:--:| 
 | *Best actions learnt by model-free agent after 4000 episodes* |
 
-| ![Returns for each episode of a model-free agent ](pictures_for_readme/returns_in_the_learning_phase.png"Returns for each episode of a model-free agent")  | 
+| ![Returns for each episode of a model-free agent ](pictures_for_readme/returns_in_the_learning_phase.png "Returns for each episode of a model-free agent")  | 
 |:--:| 
 | *Returns for each episode of a model-free agent* |
 
