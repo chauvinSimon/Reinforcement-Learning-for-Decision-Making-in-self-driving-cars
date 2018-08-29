@@ -18,6 +18,7 @@ Inherited classes are:
         - SARSA
         - SARSA-lambda
         - expected-SARSA
+-- One model-based Monte-Carlo Dynamic Programming method
 
 Note about terminology:
  - TD-based = Temporal Difference = all make Sample Back-Up (as opposed to DP = dynamic programming)
