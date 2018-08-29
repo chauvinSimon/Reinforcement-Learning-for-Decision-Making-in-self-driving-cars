@@ -99,6 +99,9 @@ class Agent(ABC):
         self.action_to_color = dict(zip(self.actions_list, colours_list))
         self.size_of_largest_element = 800
 
+        # monitoring the evolution of one q-value
+        self.reference_list = []
+
     def reset_q_table(self):
         self.q_table = pd.DataFrame(columns=self.columns_q_table, dtype=np.float32)
 
@@ -174,7 +177,8 @@ class Agent(ABC):
         id_row_previous_state = self.get_id_row_state(state)
         res = self.q_table.loc[id_row_previous_state, self.actions_list[action_id]]
         # should be +40
-        print("reference_value = {}".format(res))
+        # print("reference_value = {}".format(res))
+        self.reference_list.append(res)
         return res
 
     @abstractmethod
@@ -284,7 +288,8 @@ class Agent(ABC):
         # plt.show()
         :return:
         """
-        fig = plt.figure()
+        fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
+        # fig = plt.figure()
         ax1 = fig.add_subplot(111)
 
         # not to overlap scatters
@@ -331,7 +336,7 @@ class Agent(ABC):
                              max(self.q_table[self.state_features_list[0]]) + 1, 1.0))
         plt.grid(True, alpha=0.2)
         ax1.set_facecolor('silver')
-        plt.savefig(folder + "plot_q_table.png")
+        plt.savefig(folder + "plot_q_table.png", dpi=800)
         if display_flag:
             plt.show()
 
@@ -347,7 +352,9 @@ class Agent(ABC):
         scale_factor = self.size_of_largest_element / max(max_value, abs(min_value))
 
         # look for the best action for each state
-        fig = plt.figure()
+        fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
+
+        # fig = plt.figure()
         ax2 = fig.add_subplot(111)
         for index, row in self.q_table.iterrows():
             action_value = row.filter(self.actions_list, axis=0)
@@ -379,7 +386,7 @@ class Agent(ABC):
                              max(self.q_table[self.state_features_list[0]]) + 1, 1.0))
         plt.grid(True, alpha=0.2)
         ax2.set_facecolor('silver')
-        plt.savefig(folder + "plot_optimal_actions_at_each_position.png")
+        plt.savefig(folder + "plot_optimal_actions_at_each_position.png", dpi=800)
         if display_flag:
             plt.show()
 

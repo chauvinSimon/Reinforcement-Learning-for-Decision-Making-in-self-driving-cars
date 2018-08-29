@@ -42,7 +42,7 @@ In addition, he must respect different constrains
 - apply **traffic law**
 - make sure to drive at a **reduce speed when passing close to the pedestrian**
 
->> Let's make the agent learn how to do that!
+> Let's make the agent learn how to do that!
 
 <p align="center"> 
 <img src="https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/pictures_for_readme/animation.gif" width="500" height="80"/>
@@ -77,6 +77,11 @@ Note2: to **disable the animation**:
  - traffic law
  - safety 
  - comfort
+
+**Termination Condition:**
+- The task is episodic, and in order to solve the environment, the agent must get an **average return of** ```+17``` over ```100``` **consecutive episodes**.
+- Knowing that the **maximum return is 18**
+
 
 Finally, **hard constrains** are used to eliminate certain undesirable behaviours
  - it is better to use **action-masking** rather than penalizing these behaviours in the reward function
@@ -219,21 +224,30 @@ It helps reducing exploration and ensures safety.
 This example of q-values for ```position = 1```, when driving at **maximal speed = 5**, the agent is prevented from ```speed_up``` actions (```q = -inf```).
 ```
 [ --- actions --- ]
-["no_change", "speed_up", "speed_up_up", "slow_down", "slow_down_down"]
-  [-3.44 -0.89 -0.49 -inf -inf]  # velocity = 0
-  [1.11 1.51 1.49 -5.44 -inf]  # velocity = 1
-  [3.51 3.49 2.78 -0.89 -7.44]  # velocity = 2
-  [5.49 4.78 -inf 1.51 -2.89]  # velocity = 3
-  [6.78 -inf -inf 3.49 -0.49]  # velocity = 4
-  [-inf -inf -inf 4.78 1.49]  # velocity = 5
-  
+   no_change  speed_up  speed_up_up  slow_down  slow_down_down
+0  -3.444510 -0.892310    -0.493900       -inf            -inf
+1   1.107690  1.506100     1.486100  -5.444510            -inf
+2   3.506100  3.486100     2.782100  -0.892310       -7.444510
+3   5.486100  4.782100         -inf   1.506100       -2.892310
+4   6.782100      -inf         -inf   3.486100       -0.493900
+5       -inf      -inf         -inf   4.782100        1.486100  
   ```
+
+#### Final value coherence checking
+
+In the **Bellman equation**, if the episode is terminated, then ```q_target = r``` (next state has value 0)
+- Therefore, in the Optimal Value Function, the q-values of states that are just about to terminate is equal to the reward associated to the transition caused by the action.
+- I find it is very usesul to monitor of such q-values in the learning process
+
+| ![Monitoring of the convergence of a given q-value](pictures_for_readme/ref_q_value.png"Monitoring of the convergence of a given q-value")  | 
+|:--:| 
+| *Monitoring of the convergence of a given q-value* |
 
 #### Generated files
 
 Overview of the parameters used for the environment
 
- - [in .json](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/environments/env_configuration.json)
+ - [in .json](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/environments/simple_road_env_configuration.json)
 
 Weights of the Q-table
 
@@ -251,17 +265,17 @@ Plots of the final Q-table
  - [Normalized Q-values](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/simple_road/plot_q_table.png)
  - [Best Q-values for each state](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results\simple_road\plot_q_table.png)
 
-<p align="center"> 
-<img src="https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/pictures_for_readme/plot_optimal_actions_at_each_position.png" width="600" height="400"/>
-</p>
+| ![Best actions learnt by model-free agent after 4000 episodes](pictures_for_readme/plot_optimal_actions_at_each_position.png"Best actions learnt by model-free agent after 4000 episodes")  | 
+|:--:| 
+| *Best actions learnt by model-free agent after 4000 episodes* |
 
-<p align="center"> 
-<img src="https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/pictures_for_readme/returns_in_the_learning_phase.png" width="600" height="400"/>
-</p>
+| ![Returns for each episode of a model-free agent ](pictures_for_readme/returns_in_the_learning_phase.png"Returns for each episode of a model-free agent")  | 
+|:--:| 
+| *Returns for each episode of a model-free agent* |
 
 #### Example of settings
 
-After training, [env_configuration.json](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/environments/env_configuration.json) is generated to **summarize the configuration**.
+After training, [env_configuration.json](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/environments/simple_road_env_configuration.json) is generated to **summarize the configuration**.
 
 ```
 {
@@ -333,4 +347,3 @@ I am working on a more complex environment with a richer state space. Stay tuned
 
 * Initial inspiration from the very good [morvanzhou's tutorials](https://www.youtube.com/watch?v=pieI7rOXELI&list=PLXO45tsB95cIplu-fLMpUEEZTwrDNh6Ba&index=1)
 * Project realized while completing the Udacity's [Deep Reinforcement Learning Nanodegree](https://www.udacity.com/course/deep-reinforcement-learning-nanodegree--nd893) program
-* 

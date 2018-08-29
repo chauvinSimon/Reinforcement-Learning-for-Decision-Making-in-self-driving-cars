@@ -216,7 +216,7 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                         step_counter = step_id
                         steps_counter_list.append(step_id)
                         returns_list.append(return_of_episode)
-                        # agent.compare_reference_value()
+                        agent.compare_reference_value()
 
                         break
 
@@ -315,7 +315,9 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
         os.makedirs(folder)
 
     # plot step_counter for each episode
-    plt.figure()
+    fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
+
+    # plt.figure()
     plt.grid(True)
     plt.xlabel('Episode')
     plt.title("Episode Step_counts over Time (Smoothed over window size {})".format(smoothing_window))
@@ -324,11 +326,12 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
         smoothing_window, min_periods=smoothing_window).mean()
     plt.plot(steps_counter_list_to_plot, linewidth=0.5)
     plt.plot(steps_smoothed, linewidth=2.0)
-    plt.savefig(folder + "step_counter.png")
+    plt.savefig(folder + "step_counter.png", dpi=800)
     if display_flag:
         plt.show()
 
-    plt.figure()
+    fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
+    # plt.figure()
     plt.grid(True)
     returns_smoothed = pd.Series(returns_to_plot).rolling(smoothing_window, min_periods=smoothing_window).mean()
     plt.plot(returns_to_plot, linewidth=0.5)
@@ -337,12 +340,14 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
     plt.xlabel("Episode")
     plt.ylabel("Episode Return(Smoothed)")
     plt.title("Episode Return over Time (Smoothed over window size {})".format(smoothing_window))
-    plt.savefig(folder + "return.png")
+    plt.savefig(folder + "return.png", dpi=800)
     if display_flag:
         plt.show()
 
     # bins = range(min(returns_to_plot), max(returns_to_plot) + 1, 1)
-    plt.figure()
+    fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
+
+    # plt.figure()
     plt.hist(returns_to_plot, normed=True, bins=100)
     plt.ylabel('reward distribution')
     if display_flag:
@@ -445,7 +450,7 @@ if __name__ == "__main__":
     # method_used = "mc_control"  # definitely the faster [in term of duration not nb_episodes]. below 1 min
 
     # -2- Temporal-Difference  # all are working - "q" performs the best
-    # method_used = "q"
+    method_used = "q"
     # method_used = "sarsa"
     # method_used = "expected_sarsa"
     # method_used = "sarsa_lambda"  # worked with trace_decay=0.3
@@ -456,7 +461,7 @@ if __name__ == "__main__":
 
     # -4- Model-Based Dynamic Programming
     # Dynamic programming assumes that the agent has full knowledge of the MDP
-    method_used = "DP"
+    # method_used = "DP"
 
     # Instanciate an Agent
     brain_agent = None
@@ -535,7 +540,7 @@ if __name__ == "__main__":
         print("v_i has return = {} for trajectory = {}".format(return_of_episode_vi, trajectory_vi))
 
     # Training and/or Testing
-    flag_training_once = False
+    flag_training_once = True
     flag_testing = False
     flag_training_hyper_parameter_tuning = False  # Tkinter is not used when tuning hyper-parameters
     display_learning_results = False  # only used for training_once
@@ -553,7 +558,8 @@ if __name__ == "__main__":
     eps_end_training = 0.01
     # reach eps_end at episode_id = log10(eps_end/eps_start) / log10(eps_decay)
     # 0.99907 for 5000 at 0.01/1.0
-    eps_decay_training = 0.998466
+    # eps_decay_training = 0.998466
+    eps_decay_training = 0.9992
     # 0.99907  # for getting to 0.01 in ~5000 episodes
 
     # to reach eps_end at episode episode_id, eps_decay = (eps_end / eps_start) ** (1/episode_id)
@@ -653,6 +659,8 @@ if __name__ == "__main__":
         except Exception as e:
             print('Exception = {}'.format(e))
         print("hyper_parameters = {}".format(hyper_parameters))
+
+        # print(brain_agent.reference_list)
 
     if flag_testing:
         returns_list_testing = []
