@@ -546,7 +546,7 @@ class Road(tk.Tk, object):  # if tk is supported
 
     def move_to_state(self, state):
         """
-        for model-based DP
+        teleportation for model-based DP
         :return:
         """
         self.state_ego_position = state[0]

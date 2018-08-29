@@ -372,6 +372,7 @@ def test_agent(using_tkinter_test, agent, returns_list, nb_episodes=1, max_nb_st
     if agent.load_q_table(weight_file):
 
         for episode_id in range(nb_episodes):
+            trajectory = []
             # reset the environment for a new episode
             current_observation, masked_actions_list = env.reset()  # initial observation = initial state
             print("{} = initial_observation".format(current_observation))
@@ -391,15 +392,22 @@ def test_agent(using_tkinter_test, agent, returns_list, nb_episodes=1, max_nb_st
 
                 score += reward  # update the score
 
+                trajectory.append(current_observation)
+                trajectory.append(current_action)
+
                 # update state
                 current_observation = next_observation
                 print("\r {}, {}, {}.".format(current_action, reward, termination_flag), end="")
                 sys.stdout.flush()
                 if termination_flag:  # exit loop if episode finished
+                    trajectory.append(next_observation)
                     break
 
             returns_list.append(score)
             print("\n{}/{} - Return: {}".format(episode_id, nb_episodes, score))
+            print("\nTrajectory = {}".format(trajectory))
+            # Best trajectory= [[0, 3], 'no_change', [3, 3], 'no_change', [6, 3], 'no_change', [9, 3], 'slow_down',
+            # [11, 2], 'no_change', [13, 2], 'speed_up', [16, 3], 'no_change', [19, 3]]
 
         print("---")
         print("{} = average return".format(np.mean(returns_list)))
@@ -482,21 +490,49 @@ if __name__ == "__main__":
         brain_agent = Agent(actions=actions_list, state=state_features_list)
 
     elif method_used == "DP":
-        brain_agent = DP(actions=actions_list, state=state_features_list, env=env, gamma=1)
-        v_table = brain_agent.policy_evaluation()
-        q_table = brain_agent.q_from_v(v_table)
-        policy_improved = brain_agent.policy_improvement(v_table)
-        opt_policy, opt_v_table = brain_agent.policy_iteration()
-        opt_q_table = brain_agent.q_from_v(opt_v_table)
+        # make sure it does not do any training or testing (it has all its methods are implemented internally)
+        brain_agent = DP(actions=actions_list, state=state_features_list, env=env, gamma=0.9)
 
-        print(v_table[19][3])
-        print(v_table)
-        print(q_table)
-        print(policy_improved)
-        print(opt_policy)
-        print(opt_v_table)
-        print(opt_q_table)
-        brain_agent.run_policy(opt_policy, [0, 3])
+        # ToDo: Problem at state = [3, 3]
+        # q_values_for_this_state = [8.40 9.23 -inf 4.76 -2.11] makes the agent go for speed_up => Best = 17 (not 18)
+
+        # check the interface with the environment through specific values
+        final_state = [19, 3]
+        final_action = "no_change"
+        next_observation_dp, reward_dp, termination_flag_dp = brain_agent.get_value_from_state(final_state,
+                                                                                               final_action)
+        action = "no_change"
+        obstacle_state = [12, 2]
+        next_observation_dp, reward_dp, termination_flag_dp = brain_agent.get_value_from_state(obstacle_state, action)
+        print(" {}, {}, {} = results".format(next_observation_dp, reward_dp, termination_flag_dp))
+
+        # compare value_iteration and policy_iteration
+        opt_policy_pi, opt_v_table_pi = brain_agent.policy_iteration()
+        np.save('opt_policy_pi.npy', opt_policy_pi)
+        np.save('opt_v_table_pi.npy', opt_v_table_pi)
+        opt_q_table_pi = brain_agent.q_from_v(opt_v_table_pi)
+        np.save('opt_q_table_pi.npy', opt_q_table_pi)
+        print("final_state_values p_i = {}".format(opt_q_table_pi[final_state[0]][final_state[1]]))
+        print(opt_v_table_pi)
+        print(opt_q_table_pi)
+
+        # opt_policy_pi = np.load('opt_policy_pi.npy')
+        return_of_episode_pi, trajectory_pi = brain_agent.run_policy(opt_policy_pi, [0, 3])
+        print("p_i has return = {} for trajectory = {}".format(return_of_episode_pi, trajectory_pi))
+
+        print("\n --- \n")
+
+        opt_policy_vi, opt_v_table_vi = brain_agent.value_iteration()
+        np.save('opt_policy_vi.npy', opt_policy_vi)
+        np.save('opt_v_table_vi.npy', opt_v_table_vi)
+        opt_q_table_vi = brain_agent.q_from_v(opt_v_table_vi)
+        np.save('opt_q_table_vi.npy', opt_q_table_vi)
+        print("final_state_values v_i = {}".format(opt_q_table_vi[final_state[0]][final_state[1]]))
+        print(opt_v_table_vi)
+        print(opt_q_table_vi)
+
+        return_of_episode_vi, trajectory_vi = brain_agent.run_policy(opt_policy_vi, [0, 3])
+        print("v_i has return = {} for trajectory = {}".format(return_of_episode_vi, trajectory_vi))
 
     # Training and/or Testing
     flag_training_once = False

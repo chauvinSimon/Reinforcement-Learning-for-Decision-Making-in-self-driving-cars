@@ -3,7 +3,8 @@
 
 # Results and log
 *.log
-results/*
+results/simple_road
+!*/results/simple_road/dynamic_programming
 
 # Others
 .idea/

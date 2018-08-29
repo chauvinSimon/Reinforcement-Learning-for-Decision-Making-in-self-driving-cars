@@ -55,6 +55,7 @@ Structure of the object named "q_table":
 """
 
 import numpy as np
+import time
 import pickle
 from copy import copy
 import pandas as pd
@@ -658,7 +659,6 @@ class MC(Agent):
     def __init__(self, actions, state, load_q_table=False):
         super(MC, self).__init__(actions, state, load_q_table)
         self.nA = len(actions)
-        self.policy = None
         # self.q_table = defaultdict(lambda: np.zeros(self.nA))
 
     def compare_reference_value(self):
@@ -778,13 +778,17 @@ class MC(Agent):
         return False
 
 
-# Model-based - to get the optimal values (to set the success_threshold)
+# Model-based
 class DP(Agent):
+    """
+    DP stands for Dynamic Programming
+    Model-Based: it has access to the Reward and Transition functions
+    Agent used to get the optimal values (to set the success_threshold)
+    """
     def __init__(self, actions, state, env, gamma, load_q_table=False):
         super(DP, self).__init__(actions, state, load_q_table)
         self.env = env
         self.nA = len(actions)
-        self.policy = None
         self.n_position = 20
         self.n_velocity = 6
         self.gamma = gamma
@@ -792,18 +796,73 @@ class DP(Agent):
     def learn(self):
         pass
 
+    def get_value_from_state(self, state, action):
+        """
+        debug: make one step in the environment
+        """
+        [p, v] = state
+        self.env.reset()
+        self.env.move_to_state([p, v])  # teleportation
+        next_observation, reward, termination_flag, _ = self.env.step(action)
+        return next_observation, reward, termination_flag
+
+    def run_policy(self, policy, initial_state, max_nb_steps=100):
+        """
+        run one episode with a policy
+        """
+        self.env.reset()
+
+        # from Policy to Value Functions - for debug
+        v_table = self.policy_evaluation(policy=policy)
+        q_table = self.q_from_v(v_table)
+
+        current_observation = initial_state
+        self.env.move_to_state(initial_state)  # say the env to move to state [p][v]
+        return_of_episode = 0
+        trajectory = []
+
+        step_count = 0
+        while step_count < max_nb_steps:
+            step_count += 1
+
+            policy_for_this_state = policy[current_observation[0], current_observation[1]]
+            print("policy_for_this_state = {}".format(policy_for_this_state))
+            print("q_values_for_this_state = {}".format(q_table[current_observation[0], current_observation[1]]))
+
+            action_id = np.argmax(policy[current_observation[0], current_observation[1]])
+            action = self.actions_list[action_id]
+            print("action = {}".format(action))
+
+            trajectory.append(current_observation)
+            trajectory.append(action)
+
+            next_observation, reward, termination_flag, _ = self.env.step(action)
+            print(" {}, {}, {} = results".format(next_observation, reward, termination_flag))
+
+            return_of_episode += reward
+
+            current_observation = next_observation
+            if termination_flag:
+                trajectory.append(next_observation)
+                break
+
+        print("return_of_episode = {}".format(return_of_episode))
+        print("Trajectory = {}".format(trajectory))
+        return return_of_episode, trajectory
+
     def q_from_v(self, v_table):
+        """
+        from the Value Function (for each state) to the Q-value Function (for each [state, action] pair)
+        it makes sure masked actions have -np.inf values
+        """
+        q_table = np.ones((self.n_position, self.n_velocity, self.nA))
+
         # loop over all possible states (p, v)
-        q = np.ones((self.n_position, self.n_velocity, self.nA))
         for p in range(self.n_position):
-        # for p in range(19, 20):
-        #     print("p = {}".format(p))
             for v in range(self.n_velocity):
-            # for v in range(2, 3):
-            #     print("v = {}".format(v))
                 masked_actions_list = self.env.masking_function([p, v])
                 possible_actions = [action for action in self.actions_list if action not in masked_actions_list]
-                # print("possible_actions = {}".format(possible_actions))
+                # print("possible_actions = {} for state = {}".format(possible_actions, [p, v]))
 
                 for action_id in range(self.nA):
                     self.env.move_to_state([p, v])  # say the env to move on on state [p][v]
@@ -812,42 +871,64 @@ class DP(Agent):
                         # print(" -- ")
                         # print(" {} taken in {}".format(action, [p, v]))
                         next_observation, reward, termination_flag, _ = self.env.step(action)
-                        prob = 1  # deterministic environment
+
+                        prob = 1  # it is a deterministic environment
                         if termination_flag:
                             # print(" with termination_flag, Q = prob {} * reward {}".format(prob, reward))
-                            q[p][v][action_id] = prob * reward
+                            q_table[p][v][action_id] = prob * reward
 
                         else:
                             next_p = next_observation[0]
                             next_v = next_observation[1]
                             # print(" No termination_flag")
-                            q[p][v][action_id] = prob * (reward + self.gamma * v_table[next_p][next_v])
+                            q_table[p][v][action_id] = prob * (reward + self.gamma * v_table[next_p][next_v])
 
                     else:
-                        # print(" {} cannot be taken in {}".format(action, [p, v]))
-                        q[p][v][action_id] = -np.inf  # masked action
-        return q
+                        # print("Action {} cannot be taken in {}".format(action, [p, v]))
+                        q_table[p][v][action_id] = -np.inf  # masked action
+        return q_table
 
     def policy_improvement(self, v_table):
+        """
+        Used by Policy Iteration + Value Iteration
+
+        Optimality Bellman operator:
+        - from Value Function to a Policy
+        - contains a max operator, which is non linear
+
+        Two algorithms are highly similar (in their key steps):
+        - policy improvement (this one involves a stability check) for Policy_Iteration
+        - policy extraction (for Value_Iteration)
+        """
         policy = np.zeros([self.n_position, self.n_velocity, self.nA]) / self.nA
         for p in range(self.n_position):
             for v in range(self.n_velocity):
-                q = self.q_from_v(v_table)
+                q_table = self.q_from_v(v_table)
                 # OPTION 1: construct a deterministic policy
-                # policy[p][v][np.argmax(q[p][v])] = 1  # make sure we have policy initialized with np.zeros()
+                # policy[p][v][np.argmax(q_table[p][v])] = 1  # make sure we have policy initialized with np.zeros()
 
                 # OPTION 2: construct a stochastic policy that puts equal probability on maximizing actions
-                best_a = np.argwhere(q[p][v] == np.max(q[p][v])).flatten()
+                best_a = np.argwhere(q_table[p][v] == np.max(q_table[p][v])).flatten()
                 policy[p][v] = np.sum([np.eye(self.nA)[i] for i in best_a], axis=0) / len(best_a)
 
         return policy
 
-    def policy_evaluation(self, policy=None, theta=1e-6, max_counter=1e5):
+    # truncated policy_evaluation
+    def policy_evaluation(self, theta_value_function=10e-3, policy=None, max_counter=1e3):
         """
-        # -26.40 = v_table[19, 2] with random policy
+        From a Policy to its Value Function
+        Used by Policy Iteration
+
+        Truncated: No need to have the true absolute value function. The relative values are enough to get the Policy
+
+        Two algorithms are highly similar except for a max operation:
+        - policy evaluation (for Policy_Iteration)
+        - finding optimal value function (for Value_Iteration)
+
+        # -26.40 = v_table[19, 2] with random policy. Correct
+        :param theta_value_function: threshold to consider two value functions similar
         :param policy: policy[state] = policy[p][v] = probabilities (numpy array) of taking each of the actions
-        :param theta:
-        :param max_counter:
+        :param max_counter: truncated aspect - to stop iterations
         :return:
         """
         if policy is None:
@@ -858,16 +939,13 @@ class DP(Agent):
         while counter < max_counter:
 
             counter += 1
-            if counter % 100 == 0:
-                print(" --- {} --- ".format(counter))
-            delta = 0
+            if counter % 1000 == 0:
+                print(" --- {} policy_evaluation --- ".format(counter))
+            delta_value_functions = 0
+
             # loop over all possible states (p, v)
             for p in range(self.n_position):
-            # for p in range(19, 20):
-            #     print("p = {}".format(p))
                 for v in range(self.n_velocity):
-                # for v in range(2, 3):
-                #     print("v = {}".format(v))
 
                     v_state = 0
                     masked_actions_list = self.env.masking_function([p, v])
@@ -900,51 +978,148 @@ class DP(Agent):
                                 v_state += action_prob * prob * reward
                             else:
                                 v_state += action_prob * prob * (reward + self.gamma * v_table[next_p][next_v])
-                    delta = max(delta, np.abs(v_table[p][v] - v_state))
+                    delta_value_functions = max(delta_value_functions, np.abs(v_table[p][v] - v_state))
                     v_table[p][v] = v_state
                     # print("v_state = {}".format(v_state))
 
-            if delta < theta:
+            if delta_value_functions < theta_value_function:
                 break
         return v_table
 
-    def policy_iteration(self, theta=1e-8, max_counter=1e5):
+    # truncated Policy_Iteration
+    def policy_iteration(self, theta_value_function=1e-3, theta_final_value_function=1e-5, max_counter=1e3):
+        """
+        To approximate the optimal policy and value function
+        Duration of Policy Iteration = 12.44 - counter = 5 - delta_policy = 0.0 with theta = 1e-3 and final theta = 1e-5
+
+        Start with a random policy
+        Policy iteration includes:
+        - policy evaluation
+        - policy improvement
+        The two are repeated iteratively until policy converges
+
+        In this process, each policy is guaranteed to be a strict improvement over the previous one (or we are done).
+        Given a policy, its value function can be obtained using the "Bellman operator"
+
+        Allegedly, this convergence of Policy Iteration is much faster than Value Iteration
+
+        :param theta_value_function: for policy evaluation
+        :param theta_final_value_function: for stopping the iteration. When policy have similar value_functions
+        :param max_counter:
+        :return:
+        """
+        time_start = time.time()
+
         policy = np.zeros([self.n_position, self.n_velocity, self.nA]) / self.nA
         counter = 0
         v_table = None
+        delta_policy = None
+
         while counter < max_counter:
             counter += 1
-            print(" - {} - ".format(counter))
-            v_table = self.policy_evaluation(policy, theta)
+            intermediate_time = time.time()
+            duration = intermediate_time - time_start
+            print(" - {}-th iteration in Policy_Iteration - duration = {:.2f} - delta_policy = {}".format(
+                counter, duration, delta_policy))
+
+            # 1- Evaluation: For fixed current policy, find values with policy evaluation
+            v_table = self.policy_evaluation(theta_value_function=theta_value_function,
+                                             policy=policy,
+                                             max_counter=max_counter)
             new_policy = self.policy_improvement(v_table)
 
+            # 2- Improvement : For fixed values, get a better policy using policy extraction (One-step look-ahead)
             # OPTION 1: stop if the policy is unchanged after an improvement step
-            if (new_policy == policy).all():
-                break
+            # if (new_policy == policy).all():
+            #     break
 
             # OPTION 2: stop if the value function estimates for successive policies has converged
-            # if np.max(abs(policy_evaluation(env, policy) - policy_evaluation(env, new_policy))) < theta*1e2:
-            #    break;
+            # i.e. if policies have similar value functions
+            delta_policy = np.max(abs(self.policy_evaluation(policy=policy,
+                                                             theta_value_function=theta_value_function,
+                                                             max_counter=max_counter)
+                                      - self.policy_evaluation(policy=new_policy,
+                                                               theta_value_function=theta_value_function,
+                                                               max_counter=max_counter)
+                                      ))
+            if delta_policy < theta_final_value_function:
+                break
 
             policy = copy(new_policy)
+
+        if counter == max_counter:
+            print("Policy_Iteration() stops because of max_counter = {}".format(max_counter))
+        else:
+            print("Policy_Iteration() stops because of theta_value_function = {}".format(theta_value_function))
+
+        time_stop = time.time()
+        duration = time_stop - time_start
+        print("Duration of Policy Iteration = {:.2f} - counter = {} - delta_policy = {}".format(duration, counter,
+                                                                                                delta_policy))
+
         return policy, v_table
 
-    def run_policy(self, policy, initial_state):
-        self.env.reset()
-        current_observation = initial_state
-        self.env.move_to_state(initial_state)  # say the env to move on on state [p][v]
-        return_of_episode = 0
-        done = False
-        while not done:
-            policy_for_this_state = policy[current_observation[0], current_observation[1]]
-            print("policy_for_this_state = {}".format(policy_for_this_state))
-            action_id = np.argmax(policy[current_observation[0], current_observation[1]])
-            action = self.actions_list[action_id]
-            print("action = {}".format(action))
-            next_observation, reward, termination_flag, _ = self.env.step(action)
-            print(" {}, {}, {} = results".format(next_observation, reward, termination_flag))
+    def value_iteration(self, theta_value_function=1e-5, max_counter=1e3):
+        """
+        To approximate the optimal policy and value function
 
-            return_of_episode += reward
-            done = termination_flag
+        Duration of Value Iteration = 114.28 - counter = 121 - delta_value_functions = 9.687738053543171e-06
 
-        print("return_of_episode = {}".format(return_of_episode))
+        Start with a random value function
+        Value iteration includes:
+        - finding optimal value function [can also be seen as a combination of
+            - policy_improvement (due to max)
+            - truncated policy_evaluation (reassign v_(s) after just 1 sweep of all states, regardless of convergence)]
+        - one policy extraction.
+        There is no repeat of the two because once the value function is optimal,
+        then the policy out of it should also be optimal (i.e. converged)
+
+        Every iteration updates both the values and (implicitly) the policy
+        We don’t track the policy, but taking the max over actions implicitly recomputes it
+
+        At the end, we derive the optimal policy from the optimal value function.
+        This process is based on the "optimality Bellman operator" (contains a max operator, which is non linear)
+        """
+        time_start = time.time()
+
+        # initialize V arbitrarily
+        v_table = np.zeros((self.n_position, self.n_velocity))
+        counter = 0
+        delta_value_functions = None
+
+        while counter < max_counter:
+            counter += 1
+            intermediate_time = time.time()
+            duration = intermediate_time - time_start
+            print(" - {}-th iteration in Value_Iteration - duration = {:.2f} - delta_value_functions = {}".format(
+                counter, duration, delta_value_functions))
+
+            delta_value_functions = 0
+            # loop over all states
+            for p in range(self.n_position):
+                for v in range(self.n_velocity):
+                    value = v_table[p][v]
+
+                    # usually policy evaluation to update v_table[state] with Bellman. Here, one sweep only
+                    q_table = self.q_from_v(v_table)
+                    v_table[p][v] = np.max(q_table[p][v])
+
+                    # check how much the value has changed
+                    delta_value_functions = max(delta_value_functions, abs(v_table[p][v] - value))
+            if delta_value_functions < theta_value_function:
+                break
+        # at this point, we have the Optimal Value_Function
+        # let's obtain the corresponding policy
+        policy = self.policy_improvement(v_table)
+
+        if counter == max_counter:
+            print("Value_Iteration() stops because of max_counter = {}".format(max_counter))
+        else:
+            print("Value_Iteration() stops because of theta_value_function = {}".format(theta_value_function))
+
+        time_stop = time.time()
+        duration = time_stop - time_start
+        print("Duration of Value Iteration = {:.2f} - counter = {} - delta_value_functions = {}".format(
+            duration, counter, delta_value_functions))
+
+        return policy, v_table
