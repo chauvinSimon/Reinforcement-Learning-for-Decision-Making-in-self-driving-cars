@@ -31,7 +31,7 @@ My repository is structured as follow. Each time a ```main```, an ```agent``` an
 			- *uncomment the import statement if you do not want to use it*
 
 ## Simple_road environment
-It is defined as `env` [openai gym](https://github.com/openai/gym)
+It is defined as `env` of [openai gym](https://github.com/openai/gym)
 
 ### Use case
 
@@ -80,7 +80,7 @@ Note2: to **disable the animation**:
 
 **Termination Condition:**
 - The task is episodic, and in order to solve the environment, the agent must get an **average return of** ```+17``` over ```100``` **consecutive episodes**.
-- Knowing that the **maximum return is 18**
+- Knowing that the **maximum possible return** is ```18```
 
 
 Finally, **hard constrains** are used to eliminate certain undesirable behaviours
@@ -114,11 +114,12 @@ Choose
 	- `Dynamic Programming`
 
 - the task, playing with flags
- - `training`
- - `testing`
- - `hyper-parameter tuning`
+	 - `training`
+	 - `testing`
+	 - `hyper-parameter tuning`
+
 - if you want the environment window to be display
- - with the flag `flag_tkinter = False` for the simple environment
+	 - with the flag `flag_tkinter = False` for the simple environment
 
 ### Results and Analysis:
 
@@ -238,9 +239,11 @@ In the **Bellman equation**, if the episode is terminated, then ```q_target = r`
 - Therefore, in the Optimal Value Function, the q-values of states that are just about to terminate is equal to the reward associated to the transition caused by the action.
 - I find it is very usesul to monitor of such q-values in the learning process
 
-| ![Monitoring of the convergence of a given q-value](pictures_for_readme/ref_q_value.png "Monitoring of the convergence of a given q-value")  | 
+| ![Monitoring of the convergence of a given q-value](pictures_for_readme/ref_q_value400.png "Monitoring of the convergence of a given q-value")  | 
 |:--:| 
 | *Monitoring of the convergence of a given q-value* |
+
+The q-value estimate for this state **converges** to the optimal value (```+40``` = ```reward[reach end with correct velocity]```)
 
 #### Generated files
 
@@ -270,7 +273,9 @@ Plots of the final Q-table
 
 | ![Returns for each episode of a model-free agent ](pictures_for_readme/returns_in_the_learning_phase.png "Returns for each episode of a model-free agent")  | 
 |:--:| 
-| *Returns for each episode of a model-free agent* |
+| *Returns for each episode, during the training of a model-free agent* |
+
+The orange curve shows the average return over 100 consecutive episodes. It reaches the success threshold after 2400 episodes.
 
 #### Example of settings
 
