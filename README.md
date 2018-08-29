@@ -2,10 +2,14 @@
 
 An practical implementation of RL algorithms for Decision-Making for Autonomous Driving
 
+| ![Optimal Policy and Value Function](results/simple_road/dynamic_programming/map_values_policies.png "Optimal_Policy_and_Value_Function")  | 
+|:--:| 
+| *Optimal Policy and Value Function* |
+
 ## Structure
 My repository is structured as follow. Each time a ```main```, an ```agent``` and an ```environment``` are required
 - [`src`](src) contains
-	- [RL_brain.py](https://github.com/chauvinSimon/TD-learning/blob/master/src/main_simple_road.py) is the ```main``` for the ```simple_road``` environment
+	- [`main_simple_road.py`](https://github.com/chauvinSimon/TD-learning/blob/master/src/main_simple_road.py) is the ```main``` for the ```simple_road``` environment
 		- useful tools for vizualisation help to understand how each agent works
 	- [`environments`](src/environments)
 		- for now, only one simple environment is available
@@ -38,7 +42,7 @@ In addition, he must respect different constrains
 - apply **traffic law**
 - make sure to drive at a **reduce speed when passing close to the pedestrian**
 
-***-> Let's make the agent learn how to do that!***
+>> Let's make the agent learn how to do that!
 
 <p align="center"> 
 <img src="https://github.com/chauvinSimon/TD-learning/blob/master/pictures_for_readme/animation.gif" width="500" height="80"/>
@@ -160,8 +164,20 @@ Here is an example of the ```lambda = 0.2``` and ```gamma = 0.9```
 |:--:| 
 | *Optimal Policy and Value Function* |
 
-The Policy Iteration algorithm approximates the optimal Policy
+The Policy Iteration algorithm approximates the optimal Policy.
 
+Observations:
+- the pedestrian is located near ```position = 12```
+- Hence the speed must be smaller than ```3``` when passing ```position = 12```. Otherwise, an important negative reward is given.
+- the values of states that are close to ```position = 12``` with ```velocity >= 4``` is therfore very low. There is no change for these state to slow down before passing the pedestrian. 
+
+I noticed that **Policy Iteration** is faster (~10 times) than **Value Iteration**
+- ``` # Duration of Value Iteration = 114.28 - counter = 121 - delta_value_functions = 9.687738053543171e-06```
+- ``` # Duration of Policy Iteration = 12.44 - counter = 5 - delta_policy = 0.0 with theta = 1e-3 and final theta = 1e-5```
+- In addition, on the figure it can be seen that Value Iteration suggest starting with action ```no_change``` whatever the initial velocity. This cannot be optimal
+
+#### Optimal policy
+Model-free and Model-based agents all propose trajectories that are close or equal to the optimal one.
 For instance the following episode (list of "state-action" pairs):
 - ```[[0, 3], 'no_change', [3, 3], 'no_change', [6, 3], 'no_change', [9, 3], 'slow_down', [11, 2], 'no_change', [13, 2], 'speed_up', [16, 3], 'no_change', [19, 3]]```
 
