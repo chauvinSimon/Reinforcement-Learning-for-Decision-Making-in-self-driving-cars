@@ -315,9 +315,7 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
         os.makedirs(folder)
 
     # plot step_counter for each episode
-    fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
-
-    # plt.figure()
+    plt.figure()
     plt.grid(True)
     plt.xlabel('Episode')
     plt.title("Episode Step_counts over Time (Smoothed over window size {})".format(smoothing_window))
@@ -330,8 +328,7 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
     if display_flag:
         plt.show()
 
-    fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
-    # plt.figure()
+    plt.figure()
     plt.grid(True)
     returns_smoothed = pd.Series(returns_to_plot).rolling(smoothing_window, min_periods=smoothing_window).mean()
     plt.plot(returns_to_plot, linewidth=0.5)
@@ -345,9 +342,7 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
         plt.show()
 
     # bins = range(min(returns_to_plot), max(returns_to_plot) + 1, 1)
-    fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
-
-    # plt.figure()
+    plt.figure()
     plt.hist(returns_to_plot, normed=True, bins=100)
     plt.ylabel('reward distribution')
     if display_flag:
@@ -558,8 +553,7 @@ if __name__ == "__main__":
     eps_end_training = 0.01
     # reach eps_end at episode_id = log10(eps_end/eps_start) / log10(eps_decay)
     # 0.99907 for 5000 at 0.01/1.0
-    # eps_decay_training = 0.998466
-    eps_decay_training = 0.9992
+    eps_decay_training = 0.998466
     # 0.99907  # for getting to 0.01 in ~5000 episodes
 
     # to reach eps_end at episode episode_id, eps_decay = (eps_end / eps_start) ** (1/episode_id)

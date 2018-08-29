@@ -288,8 +288,7 @@ class Agent(ABC):
         # plt.show()
         :return:
         """
-        fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
-        # fig = plt.figure()
+        fig = plt.figure()
         ax1 = fig.add_subplot(111)
 
         # not to overlap scatters
@@ -352,9 +351,7 @@ class Agent(ABC):
         scale_factor = self.size_of_largest_element / max(max_value, abs(min_value))
 
         # look for the best action for each state
-        fig = plt.figure(num=None, figsize=(11, 10), dpi=800, facecolor='w', edgecolor='k')
-
-        # fig = plt.figure()
+        fig = plt.figure()
         ax2 = fig.add_subplot(111)
         for index, row in self.q_table.iterrows():
             action_value = row.filter(self.actions_list, axis=0)
