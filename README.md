@@ -9,7 +9,7 @@ An practical implementation of RL algorithms for Decision-Making for Autonomous 
 ## Structure
 My repository is structured as follow. Each time a ```main```, an ```agent``` and an ```environment``` are required
 - [`src`](src) contains
-	- [`main_simple_road.py`](https://github.com/chauvinSimon/TD-learning/blob/master/src/main_simple_road.py) is the ```main``` for the ```simple_road``` environment
+	- [`main_simple_road.py`](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/main_simple_road.py) is the ```main``` for the ```simple_road``` environment
 		- useful tools for vizualisation help to understand how each agent works
 	- [`environments`](src/environments)
 		- for now, only one simple environment is available
@@ -45,7 +45,7 @@ In addition, he must respect different constrains
 >> Let's make the agent learn how to do that!
 
 <p align="center"> 
-<img src="https://github.com/chauvinSimon/TD-learning/blob/master/pictures_for_readme/animation.gif" width="500" height="80"/>
+<img src="https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/pictures_for_readme/animation.gif" width="500" height="80"/>
 </p>
 
 To **visualize the progress** of the driver at each episode, a **tkinter-base animation** can be used
@@ -72,7 +72,7 @@ Note2: to **disable the animation**:
 -	``` slow_down ``` - Decelerate
 -	``` slow_down_down ``` - Hard Decelerate
 
-**Reward Function:** classified into 4 groups *(See [`environments`](src/environments/simple_road_env.py) [road_env.py](https://github.com/chauvinSimon/TD-learning/blob/master/road_env.py))*
+**Reward Function:** classified into 4 groups *(See [`environments`](src/environments/simple_road_env.py) [road_env.py](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/road_env.py))*
  - time efficiency
  - traffic law
  - safety 
@@ -146,6 +146,7 @@ SARSA-Lambda updates the model by giving reward to all the steps that contribute
 It is useful to vizualize the role of ```Eligibility Trace``` in the process of ```SARSA-Lambda```
 
 Here is an example of the ```lambda = 0.2``` and ```gamma = 0.9```
+```
 [id][-------------------------actions---------------------------] [--state features--]
    no_change  speed_up  speed_up_up  slow_down  slow_down_down  position  velocity
 0   0.000060  0.000000        0.000        0.0        0.000000       0.0       3.0
@@ -156,7 +157,7 @@ Here is an example of the ```lambda = 0.2``` and ```gamma = 0.9```
 5   0.000000  0.000000        0.198        0.0        0.000000      13.0       0.0
 6   0.000000  0.000000        1.000        0.0        0.000000      15.0       2.0
 7   0.000000  0.000000        0.000        0.0        0.000000      19.0       4.0
-
+```
 
 #### Model-Based Control with Dynamic Programming
 
@@ -189,10 +190,10 @@ Which makes sense:
 #### Hyper-parameters 
 
 See the impact of changing:
-- the traffic parameters (in [simple_road_env.py](https://github.com/chauvinSimon/TD-learning/blob/master/simple_road_env.py))
-- the reward function (in [simple_road_env.py](https://github.com/chauvinSimon/TD-learning/blob/master/src/environments/simple_road_env.py))
- - the RL-algorithm (in [RL_brain.py](https://github.com/chauvinSimon/TD-learning/blob/master/src/main_simple_road.py))
- - the hyper-parameters (in [RL_brain.py](https://github.com/chauvinSimon/TD-learning/blob/master/src/main_simple_road.py))
+- the traffic parameters (in [simple_road_env.py](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/simple_road_env.py))
+- the reward function (in [simple_road_env.py](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/environments/simple_road_env.py))
+ - the RL-algorithm (in [RL_brain.py](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/main_simple_road.py))
+ - the hyper-parameters (in [RL_brain.py](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/main_simple_road.py))
 ``` 
  hyper_parameters = (
             method_used,  # the control RL-method
@@ -216,48 +217,51 @@ I implemented the **action_masking** mechanism described in [Simon Chauvin, "Hie
 
 It helps reducing exploration and ensures safety.
 This example of q-values for ```position = 1```, when driving at **maximal speed = 5**, the agent is prevented from ```speed_up``` actions (```q = -inf```).
-
-[actions]
-  [-3.44 -0.89 -0.49 -inf -inf]
-  [1.11 1.51 1.49 -5.44 -inf]
-  [3.51 3.49 2.78 -0.89 -7.44]
-  [5.49 4.78 -inf 1.51 -2.89]
-  [6.78 -inf -inf 3.49 -0.49]
-  [-inf -inf -inf 4.78 1.49]
+```
+[ --- actions --- ]
+["no_change", "speed_up", "speed_up_up", "slow_down", "slow_down_down"]
+  [-3.44 -0.89 -0.49 -inf -inf]  # velocity = 0
+  [1.11 1.51 1.49 -5.44 -inf]  # velocity = 1
+  [3.51 3.49 2.78 -0.89 -7.44]  # velocity = 2
+  [5.49 4.78 -inf 1.51 -2.89]  # velocity = 3
+  [6.78 -inf -inf 3.49 -0.49]  # velocity = 4
+  [-inf -inf -inf 4.78 1.49]  # velocity = 5
+  
+  ```
 
 #### Generated files
 
 Overview of the parameters used for the environment
 
- - [in .json](https://github.com/chauvinSimon/TD-learning/blob/master/results/environments/env_configuration.json)
+ - [in .json](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/environments/env_configuration.json)
 
 Weights of the Q-table
 
- - [in .pkl](https://github.com/chauvinSimon/TD-learning/blob/master/results/q_table.pkl) for TD and MC
- - [in .npy](https://github.com/chauvinSimon/TD-learning/blob/master/results/simple_road/dynamic_programming/opt_q_table_pi.npy) for DP
+ - [in .pkl](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/q_table.pkl) for TD and MC
+ - [in .npy](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/simple_road/dynamic_programming/opt_q_table_pi.npy) for DP
 
 Plots in the training phase
 
- - [evolution of the return](https://github.com/chauvinSimon/TD-learning/blob/master/results/returns_in_the_learning_phase.png)
- - [distribution of the return](https://github.com/chauvinSimon/TD-learning/blob/master/results/return_distribution_in_the_learning_phase.png)
- - [count of steps per episode](https://github.com/chauvinSimon/TD-learning/blob/master/results/step_counter_in_the_learning_phase.png)
+ - [evolution of the return](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/returns_in_the_learning_phase.png)
+ - [distribution of the return](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/return_distribution_in_the_learning_phase.png)
+ - [count of steps per episode](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/step_counter_in_the_learning_phase.png)
 
 Plots of the final Q-table
 
- - [Normalized Q-values](https://github.com/chauvinSimon/TD-learning/blob/master/results/simple_road/plot_q_table.png)
- - [Best Q-values for each state](https://github.com/chauvinSimon/TD-learning/blob/master/results\simple_road\plot_q_table.png)
+ - [Normalized Q-values](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results/simple_road/plot_q_table.png)
+ - [Best Q-values for each state](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/results\simple_road\plot_q_table.png)
 
 <p align="center"> 
-<img src="https://github.com/chauvinSimon/TD-learning/blob/master/pictures_for_readme/plot_optimal_actions_at_each_position.png" width="600" height="400"/>
+<img src="https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/pictures_for_readme/plot_optimal_actions_at_each_position.png" width="600" height="400"/>
 </p>
 
 <p align="center"> 
-<img src="https://github.com/chauvinSimon/TD-learning/blob/master/pictures_for_readme/returns_in_the_learning_phase.png" width="600" height="400"/>
+<img src="https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/pictures_for_readme/returns_in_the_learning_phase.png" width="600" height="400"/>
 </p>
 
 #### Example of settings
 
-After training, [env_configuration.json](https://github.com/chauvinSimon/TD-learning/blob/master/src/environments/env_configuration.json) is generated to **summarize the configuration**.
+After training, [env_configuration.json](https://github.com/chauvinSimon/Advanced-Reinforcement-Learning-for-Decision-Making-in-self-driving-cars/blob/master/src/environments/env_configuration.json) is generated to **summarize the configuration**.
 
 ```
 {
