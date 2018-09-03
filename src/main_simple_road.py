@@ -42,8 +42,8 @@ from brains.simple_brains import SarsaTable
 from brains.simple_brains import ExpectedSarsa
 from brains.simple_brains import SarsaLambdaTable
 from brains.simple_brains import DP
-from brains.simple_DQN import DeepQNetwork
-from brains.dqn_agent_banana import Agent
+from brains.simple_DQN_tensorflow import DeepQNetwork
+from brains.simple_DQN_pytorch import Agent
 from collections import deque
 import math
 from utils.logger import Logger
@@ -394,6 +394,8 @@ def test_agent(using_tkinter_test, agent, returns_list, nb_episodes=1, max_nb_st
 
                 trajectory.append(current_observation)
                 trajectory.append(current_action)
+                trajectory.append(reward)
+                trajectory.append(termination_flag)
 
                 # update state
                 current_observation = next_observation
@@ -535,8 +537,8 @@ if __name__ == "__main__":
         print("v_i has return = {} for trajectory = {}".format(return_of_episode_vi, trajectory_vi))
 
     # Training and/or Testing
-    flag_training_once = True
-    flag_testing = False
+    flag_training_once = False
+    flag_testing = True
     flag_training_hyper_parameter_tuning = False  # Tkinter is not used when tuning hyper-parameters
     display_learning_results = False  # only used for training_once
 

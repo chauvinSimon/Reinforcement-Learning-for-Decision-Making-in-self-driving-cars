@@ -34,7 +34,7 @@ While off-policy Q-Learning does it relative to the greedy policy.
     - Q-Learning tends to converge a little slower, but has the capability to continue learning while changing policies.
     - Also, Q-Learning is not guaranteed to converge when combined with linear approximation.
 
- - All are model-free
+ - Model-free / Model-based
     - Ask yourself this question:
     - After learning, can the agent make predictions about next state and reward before it takes each action?
         -- If it can, then it’s a model-based RL algorithm.
@@ -562,7 +562,6 @@ class SarsaLambdaTable(Agent):
                  trace_decay=0.9):
         super(SarsaLambdaTable, self).__init__(actions, state, load_q_table)
 
-        # !!!!!!!!!
         # backward view, eligibility trace.
         self.lambda_trace_decay = trace_decay
         # same dimension as the Q-table: it counts how many times the state has been visited
