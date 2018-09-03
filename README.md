@@ -101,6 +101,13 @@ Finally, **hard constrains** are used to eliminate certain undesirable behaviour
 
 ### Dependencies
 
+Create a **conda environment**:
+`conda create --name rl-for-ad python=3.6`
+
+Install the packages:
+`pip install -r requirements.txt`
+
+
 Using python 3 with following modules:
 - [numpy](http://www.numpy.org/)
 - [matplotlib](https://matplotlib.org/)

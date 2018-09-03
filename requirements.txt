@@ -1,0 +1,9 @@
+tensorflow==1.7.1
+matplotlib
+numpy>=1.11.0
+jupyter
+protobuf==3.5.2
+torch==0.4.1
+pandas
+scipy
+ipykernel

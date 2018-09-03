@@ -48,7 +48,7 @@ from collections import deque
 import math
 from utils.logger import Logger
 
-seed = np.random.seed(0)
+# seed = np.random.seed(0)
 plt.rcParams['figure.figsize'] = [20, 10]
 np.set_printoptions(formatter={'float': lambda x: "{0:0.2f}".format(x)})
 
@@ -537,8 +537,8 @@ if __name__ == "__main__":
         print("v_i has return = {} for trajectory = {}".format(return_of_episode_vi, trajectory_vi))
 
     # Training and/or Testing
-    flag_training_once = False
-    flag_testing = True
+    flag_training_once = True
+    flag_testing = False
     flag_training_hyper_parameter_tuning = False  # Tkinter is not used when tuning hyper-parameters
     display_learning_results = False  # only used for training_once
 
