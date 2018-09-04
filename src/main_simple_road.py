@@ -183,7 +183,7 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                         returns_list.append(return_of_episode)
                         break
 
-                elif (method == "q") or (method == "expected_sarsa") or (method == "banana_dqn"):
+                elif (method == "q") or (method == "expected_sarsa") or (method == "simple_dqn_pytorch"):
                     current_action = agent.choose_action(current_observation, masked_actions_list, greedy_epsilon)
                     next_observation, reward, termination_flag, masked_actions_list = env.step(current_action)
                     return_of_episode += reward
@@ -193,14 +193,14 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                         agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
                                     gamma, learning_rate)
 
-                    elif method == "banana_dqn":
+                    elif method == "simple_dqn_pytorch":
                         agent.step(current_observation, current_action, reward, next_observation, termination_flag)
 
                     elif method == "expected_sarsa":
                         agent.learn(current_observation, current_action, reward, next_observation, termination_flag,
                                     greedy_epsilon, gamma, learning_rate)
 
-                    else:  # DQN
+                    else:  # DQN with tensorflow
                         # New: store transition in memory - subsequently to be sampled from
                         agent.store_transition(current_observation, current_action, reward, next_observation)
 
@@ -343,13 +343,13 @@ def display_results(agent, method_used_to_plot, returns_to_plot, smoothing_windo
 
     # bins = range(min(returns_to_plot), max(returns_to_plot) + 1, 1)
     plt.figure()
-    plt.hist(returns_to_plot, normed=True, bins=100)
+    plt.hist(returns_to_plot, norm_hist=True, bins=100)
     plt.ylabel('reward distribution')
     if display_flag:
         plt.show()
 
     agent.print_q_table()
-    if method_used_to_plot not in ["DQN", "mc_control"]:
+    if method_used_to_plot not in ["simple_dqn_tensorflow", "simple_dqn_pytorch", "mc_control"]:
         agent.plot_q_table(folder, display_flag)
         agent.plot_optimal_actions_at_each_position(folder, display_flag)
 
@@ -431,7 +431,7 @@ if __name__ == "__main__":
     env_configuration = vars(env)
     dict_configuration = dict(env_configuration)
 
-    # trick to avoid crashing:
+    # avoid special types:
     not_to_consider = ["tk", "children", "canvas", "_tclCommands", "master", "_tkloaded", "colour_action_code",
                        "colour_velocity_code", "origin_coord", "display_canvas", "origin", "_last_child_ids", "rect",
                        "logger"]
@@ -447,17 +447,17 @@ if __name__ == "__main__":
     # method_used = "mc_control"  # definitely the faster [in term of duration not nb_episodes]. below 1 min
 
     # -2- Temporal-Difference  # all are working - "q" performs the best
-    method_used = "q"
+    # method_used = "q"
     # method_used = "sarsa"
     # method_used = "expected_sarsa"
     # method_used = "sarsa_lambda"  # worked with trace_decay=0.3
 
     # -3- deep TD
-    # method_used = "DQN"
-    # method_used = "banana_dqn"  # model is correct - ToDo: hyper-parameter tuning
+    # method_used = "simple_dqn_tensorflow"
+    method_used = "simple_dqn_pytorch"  # model is correct - ToDo: hyper-parameter tuning
 
     # -4- Model-Based Dynamic Programming
-    # Dynamic programming assumes that the agent has full knowledge of the MDP
+    # Dynamic progra    mming assumes that the agent has full knowledge of the MDP
     # method_used = "DP"
 
     # Instanciate an Agent
@@ -473,7 +473,7 @@ if __name__ == "__main__":
     elif method_used == "sarsa_lambda":
         brain_agent = SarsaLambdaTable(actions=actions_list, state=state_features_list, load_q_table=False,
                                        trace_decay=0.3)
-    elif method_used == "DQN":
+    elif method_used == "simple_dqn_tensorflow":
         grand_parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         results_dir = os.path.abspath(grand_parent_dir + "/results/simple_road/")
         print("results_dir = {}".format(results_dir))
@@ -488,7 +488,7 @@ if __name__ == "__main__":
                                    # saver_dir='/tmp/tensorflow_logs/RL/saver/'
                                    saver_dir=None
                                    )
-    elif method_used == "banana_dqn":
+    elif method_used == "simple_dqn_pytorch":
         brain_agent = Agent(actions=actions_list, state=state_features_list)
 
     elif method_used == "DP":
@@ -559,7 +559,7 @@ if __name__ == "__main__":
     # 0.99907  # for getting to 0.01 in ~5000 episodes
 
     # to reach eps_end at episode episode_id, eps_decay = (eps_end / eps_start) ** (1/episode_id)
-    max_nb_episodes_training = 7000
+    max_nb_episodes_training = 70000
     max_nb_steps_training = 25
     sleep_time_between_steps_learning = 0.0005
 
