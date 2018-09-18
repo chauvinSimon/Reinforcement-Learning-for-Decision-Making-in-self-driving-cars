@@ -216,7 +216,7 @@ def train_agent(using_tkinter, agent, method, gamma, learning_rate, eps_start, e
                         step_counter = step_id
                         steps_counter_list.append(step_id)
                         returns_list.append(return_of_episode)
-                        agent.compare_reference_value()
+                        # agent.compare_reference_value()
 
                         break
 
@@ -447,17 +447,17 @@ if __name__ == "__main__":
     # method_used = "mc_control"  # definitely the faster [in term of duration not nb_episodes]. below 1 min
 
     # -2- Temporal-Difference  # all are working - "q" performs the best
-    # method_used = "q"
+    method_used = "q"
     # method_used = "sarsa"
     # method_used = "expected_sarsa"
     # method_used = "sarsa_lambda"  # worked with trace_decay=0.3
 
     # -3- deep TD
     # method_used = "simple_dqn_tensorflow"
-    method_used = "simple_dqn_pytorch"  # model is correct - ToDo: hyper-parameter tuning
+    # method_used = "simple_dqn_pytorch"  # model is correct - ToDo: hyper-parameter tuning
 
     # -4- Model-Based Dynamic Programming
-    # Dynamic progra    mming assumes that the agent has full knowledge of the MDP
+    # Dynamic programming assumes that the agent has full knowledge of the MDP
     # method_used = "DP"
 
     # Instanciate an Agent
@@ -556,10 +556,11 @@ if __name__ == "__main__":
     # reach eps_end at episode_id = log10(eps_end/eps_start) / log10(eps_decay)
     # 0.99907 for 5000 at 0.01/1.0
     eps_decay_training = 0.998466
+    # eps_decay_training = 0.99907  # - when 70000 episode
     # 0.99907  # for getting to 0.01 in ~5000 episodes
 
     # to reach eps_end at episode episode_id, eps_decay = (eps_end / eps_start) ** (1/episode_id)
-    max_nb_episodes_training = 70000
+    max_nb_episodes_training = 7000
     max_nb_steps_training = 25
     sleep_time_between_steps_learning = 0.0005
 

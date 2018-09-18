@@ -1,10 +1,10 @@
 # Reinforcement Learning for Decision-Making for self-driving-cars
 
-An practical implementation of RL algorithms for Decision-Making for Autonomous Driving
+An practical implementation of **RL algorithms** for **Decision-Making** in **Autonomous Driving**
 
-| ![Optimal Policy and Value Function](results/simple_road/dynamic_programming/map_values_policies.png "Optimal_Policy_and_Value_Function")  | 
+| [![](https://img.youtube.com/vi/UG7MTChvkM4/0.jpg "related_video")](https://youtube.com/watch?v=UG7MTChvkM4 "Click - link to related video")  | 
 |:--:| 
-| *Optimal Policy and Value Function* |
+| _**Related video:** Introduction to the concepts of **Markov Decision Process (MDP)** and **Reinforcement Learning (RL)** with a focus on the applications for **Autonomous Driving**_ |
 
 ## Structure
 My repository is structured as follow. Each time a ```main```, an ```agent``` and an ```environment``` are required
